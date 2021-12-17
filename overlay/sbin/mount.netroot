@@ -1,0 +1,177 @@
+#!/bin/sh
+
+# the two following functions are mostly copied and slightly
+# updated from the default initramfs init script:
+# in this default script, they are called after the tentative
+# mount of the root filesystem. with a network filesystem we
+# obviously need to call them before.
+ip_choose_if() {                                                                            
+        if [ -n "$BOOTIF" ]; then                                                      
+                mac=$(printf "%s\n" "$BOOTIF"|sed 's/^01-//;s/-/:/g')                      
+                dev=$(grep -l $mac /sys/class/net/*/address|head -n 1)                      
+                dev=${dev%/*}                                                               
+                [ -n "$dev" ] && echo "${dev##*/}" && return                                
+        fi                                                                                  
+        for x in /sys/class/net/eth*; do                                                    
+                if grep -iq up $x/operstate;then                                            
+                        [ -e "$x" ] && echo ${x##*/} && return                              
+                fi                                                                          
+        done                                                                                
+        [ -e "$x" ] && echo ${x##*/} && return                                              
+}
+
+# if "ip=dhcp" is specified on the command line, we obtain an IP address
+# using udhcpc. we do this now and not by enabling kernel-mode DHCP because
+# kernel-model DHCP appears to require that network drivers be built into
+# the kernel rather than as modules. At this point all applicable modules
+# in the initrd should have been loaded.
+#                            
+# You need af_packet.ko available as well modules for your Ethernet card.
+#                                             
+# See https://www.kernel.org/doc/Documentation/filesystems/nfs/nfsroot.txt
+# for documentation on the format.                 
+#                                                             
+# Valid syntaxes:                            
+#   ip=client-ip:server-ip:gw-ip:netmask:hostname:device:autoconf:
+#     :dns0-ip:dns1-ip:ntp0-ip                           
+#   ip=dhcp                                       
+#   "server-ip", "hostname" and "ntp0-ip" are not supported here.
+# Default (when configure_ip is called without setting ip=):    
+#   ip=dhcp                                                        
+#
+configure_ip() {                                                           
+        local IFS=':'                                                      
+        set -- ${ip:-dhcp}                                            
+        unset IFS                                                          
+                                                                           
+        local client_ip="$1"                                               
+        local gw_ip="$3"                                                   
+        local netmask="$4"                                                 
+        local hostname="$5"                                                 
+        local device="$6"                                                  
+        local autoconf="$7"                                                
+        local dns1="$8"                                                   
+        local dns2="$9"                                                   
+                                                                          
+        case "$client_ip" in                                              
+                off|none) return;;                                        
+                dhcp) autoconf="dhcp";;                                   
+        esac                                                              
+                                                                  
+        [ -n "$hostname" ] && hostname "$hostname"               
+
+        [ -n "$device" ] || device=$(ip_choose_if)                
+                                                                  
+        if [ -z "$device" ]; then                                         
+                echo "ERROR: IP requested but no network device was found"
+                return 1                                                  
+        fi                                                                
+                                                                          
+        if [ "$autoconf" = "dhcp" ]; then                                 
+                # automatic configuration                                                       
+                if [ ! -e /usr/share/udhcpc/default.script ]; then            
+                        echo "ERROR: DHCP requested but not present in initrd"
+                        return 1                                              
+                fi                                                            
+                echo "Obtaining IP via DHCP ($device)"                      
+                ifconfig "$device" 0.0.0.0                                    
+                udhcpc -i "$device" -f -q                                     
+        else                                                                  
+                # manual configuration                                        
+                [ -n "$client_ip" -a -n "$netmask" ] || return                
+                echo "Setting IP ($device)"                                 
+                if ifconfig "$device" "$client_ip" netmask "$netmask"; then                 
+                        [ -z "$gw_ip" ] || ip route add 0.0.0.0/0 via "$gw_ip" dev "$device"
+                fi                                                                          
+        fi                                                                                  
+                                                                                            
+        # Never executes if variables are empty                                             
+        for i in $dns1 $dns2; do                                                            
+                echo "nameserver $i" >> /etc/resolv.conf                                    
+        done                                                                                
+}
+
+# parse arguments
+# we should be called like this:
+# mount.devnfs [-o <option>[,<option>...]] /dev/n[b]fs <mountpoint>
+
+options=""
+mountpoint=""
+proto=""
+remote_root=""
+while [ ! -z "$1" ]
+do
+    case "$1" in
+        "-o")
+            options="$2"
+            shift 2
+            ;;
+        "/dev/nfs")
+            proto="nfs"
+            remote_root="$nfsroot"
+            shift
+            ;;
+        "/dev/nbfs")
+            proto="nbfs"
+            remote_root="$nbfsroot"
+            shift
+            ;;
+        *)
+            mountpoint="$1"
+            shift
+            ;;
+    esac
+done
+            
+# parse nfsroot environment variable
+
+old_ifs="$IFS"
+IFS=','
+set -- $remote_root
+IFS="$old_ifs"
+target="$1"
+shift
+while [ ! -z "$1" ]
+do
+    case "$1" in
+        "v3")
+            shift   # version 3 is already default nfs version
+            ;;
+        *)
+            if [ -z "$options" ]
+            then
+                options="$1"
+            else
+                options="$options,$1"
+            fi
+            shift
+            ;;
+    esac
+done
+
+# configure network
+configure_ip
+
+# if nbfs, load fuse module
+if [ "$proto" = "nbfs" ]
+then
+    modprobe fuse
+fi
+
+# mount network filesystem
+if [ -z "$options" ]
+then
+    opt_arg=""
+else
+    opt_arg="-o $options"
+fi  
+
+echo /sbin/mount.${proto} $opt_arg "$target" "$mountpoint"
+/sbin/mount.${proto} $opt_arg "$target" "$mountpoint"
+
+# workaround strange issue with 'mkdir -p' on NFS root subdirs
+if [ "$proto" = "nfs" ]
+then
+    ls /sysroot >/dev/null
+fi
+

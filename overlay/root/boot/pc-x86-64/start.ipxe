@@ -1,0 +1,10 @@
+#!ipxe
+# Caution: this should be simple enough to work
+# with the minimal ipxe script interpreter we use
+# as a fake bootloader on the virtual and vpn nodes.
+
+# record appropriate walt node model (64-bit CPU or not)
+set node_model pc-x86-64
+
+# run generic script
+chain /start-generic.ipxe
