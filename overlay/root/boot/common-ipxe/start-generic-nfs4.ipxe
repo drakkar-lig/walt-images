@@ -1,0 +1,24 @@
+#!ipxe
+# filesystem bootargs
+# note: default version for NFS mount is highest version,
+# v4.2 in our case.
+set nfs_root ${next-server}:/var/lib/walt/nodes/${mac}/fs
+set nfs_opts ro,nocto,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000
+set fs_bootargs root=/dev/nfs rootfstype=netroot nfsroot=${nfs_root},${nfs_opts}
+
+# Try booting over http.
+# This will fail with the fake booloader, and with
+# older versions of the walt server (which had no
+# walt-server-dhcpd service). In this case, it will
+# fallback to tftp below.
+set urlprefix http://${next-server}/boot
+chain ${urlprefix}/start-generic-2.ipxe ||
+
+# If we are here, booting over http failed.
+echo http failed. falling back to tftp.
+
+# Use empty urlprefix (compatible with early versions
+# of the fake bootloader).
+# => default protocol (tftp) and host (next-server)
+set urlprefix
+chain ${urlprefix}/start-generic-2.ipxe

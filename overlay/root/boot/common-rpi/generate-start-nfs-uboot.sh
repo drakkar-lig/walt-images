@@ -61,7 +61,7 @@ tftp ${ramdisk_addr_r} ${serverip}:initrd || reset
 
 # compute kernel command line args
 setenv nfs_root "${serverip}:/var/lib/walt/nodes/${ipaddr}/fs"
-setenv nfs_opts "acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000"
+setenv nfs_opts "ro,vers=3,nolock,nocto,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000"
 setenv nfs_bootargs "root=/dev/nfs rootfstype=netroot nfsroot=${nfs_root},${nfs_opts}"
 setenv ip_param "ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:${hostname}::off"
 setenv ip_conf "${ip_param} BOOTIF=01-${ethaddr}"
