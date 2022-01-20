@@ -51,6 +51,13 @@ RUN mkdir -p /rpi_fs/boot/qemu-arm-64 && \
     cp arch/arm64/boot/Image /rpi_fs/boot/qemu-arm-64/kernel
 RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-64/
 
+# add various overlays
+COPY overlays/generic overlays/ipxe overlays/rpi /rpi_fs/
+
+# add a copy of SD-card boot files
+# (needed to allow rpi3+ and later to boot without a SD card)
+COPY --from=waltplatform/rpi-boot-builder /opt/boot_files /rpi_fs/boot/common-rpi/sd-card
+
 # Target image
 # ------------
 FROM --platform=linux/arm/v6 alpine:${ALPINE_VERSION}
@@ -63,5 +70,4 @@ LABEL walt.server.minversion=5
 
 # prepare and run customization
 COPY --from=builder /rpi_fs /
-COPY overlays/generic overlays/ipxe overlays/rpi /
 RUN /root/customize.sh rpi

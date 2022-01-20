@@ -6,7 +6,7 @@ ALPINE_VERSION = 3.13.7
 
 build.%:
 	docker build --build-arg ALPINE_VERSION=$(ALPINE_VERSION) \
-			-f $*/Dockerfile --pull=true \
+			-f $*/Dockerfile \
 			--tag=waltplatform/$*-alpine:latest .
 	docker tag waltplatform/$*-alpine:latest \
 				waltplatform/$*-alpine:$(ALPINE_VERSION)

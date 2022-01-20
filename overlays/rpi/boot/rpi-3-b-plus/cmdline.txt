@@ -1,1 +1,1 @@
-../common-rpi/cmdline.txt
+../common-rpi/sd-card/cmdline.txt
