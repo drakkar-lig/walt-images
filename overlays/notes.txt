@@ -1,0 +1,4 @@
+A 64bit node can boot any pc-type image, including 32-bit images,
+thus the boot directory of this node model "/boot/pc-x86-64" is in
+"pc" overlay, whilst "/boot/pc-x86-32" is in specific "pc-x86-32"
+overlay only.

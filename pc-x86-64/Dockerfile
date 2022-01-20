@@ -11,5 +11,5 @@ LABEL walt.node.models=pc-x86-64
 LABEL walt.server.minversion=5
 
 # prepare and run customization
-COPY overlay /
+COPY overlays/generic overlays/ipxe overlays/pc overlays/pc-x86-32 /
 RUN /root/customize.sh pc-x86-64

@@ -14,18 +14,9 @@ case "$image_kind" in
         PACKAGES="linux-rpi linux-rpi2 uboot-tools \
                   raspberrypi-bootloader \
                   raspberrypi  $PACKAGES"
-        mv /root/mount.nbfs.static.rpi /sbin/mount.nbfs
-        mv /root/activate-nbfs-rpi.sh /usr/bin/activate-nbfs.sh
         ;;
-    "pc-x86-32")
+    "pc-x86-32"|"pc-x86-64")
         PACKAGES="linux-lts $PACKAGES"
-        mv /root/mount.nbfs.static.i386 /sbin/mount.nbfs
-        mv /root/activate-nbfs-pc.sh /usr/bin/activate-nbfs.sh
-        ;;
-    "pc-x86-64")
-        PACKAGES="linux-lts $PACKAGES"
-        mv /root/mount.nbfs.static.amd64 /sbin/mount.nbfs
-        mv /root/activate-nbfs-pc.sh /usr/bin/activate-nbfs.sh
         ;;
 esac
 
@@ -69,31 +60,6 @@ if [ "$HAS_KEXEC" != 0 ]
 then
     ln -s $(which walt-ipxe-kexec-reboot) /bin/walt-reboot
 fi
-
-case "$image_kind" in
-    "rpi")
-        # boot files for qemu arm nodes (e.g. VPN)
-        mv /root/boot/common-ipxe /boot/common-ipxe
-        mv /root/boot/qemu-arm-32/* /boot/qemu-arm-32/
-        mv /root/boot/qemu-arm-64/* /boot/qemu-arm-64/
-        # boot files for various rpi models
-        mv /root/boot/rpi-* /boot/
-        mv /root/boot/common-rpi /boot/
-        ;;
-    "pc-x86-32")
-        # allow 32-bit and 64-bit nodes
-        mv /root/boot/common-ipxe /boot/common-ipxe
-        mv /root/boot/common-pc /boot/common-pc
-        mv /root/boot/pc-x86-32 /boot/pc-x86-32
-        mv /root/boot/pc-x86-64 /boot/pc-x86-64
-        ;;
-    "pc-x86-64")
-        # allow 64-bit only
-        mv /root/boot/common-ipxe /boot/common-ipxe
-        mv /root/boot/common-pc /boot/common-pc
-        mv /root/boot/pc-x86-64 /boot/pc-x86-64
-        ;;
-esac
 
 # update initramfs with ability to use nfs & nbfs
 echo 'kernel/fs/nfs/*' > /etc/mkinitfs/features.d/netroot.modules

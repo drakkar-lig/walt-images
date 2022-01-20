@@ -62,6 +62,6 @@ LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b,qem
 LABEL walt.server.minversion=5
 
 # prepare and run customization
-COPY overlay /
 COPY --from=builder /rpi_fs /
+COPY overlays/generic overlays/ipxe overlays/rpi /
 RUN /root/customize.sh rpi
