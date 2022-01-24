@@ -1,7 +1,8 @@
 #!/bin/sh
 
 PACKAGES="alpine-base openrc nfs-utils openssh-server \
-    netcat-openbsd lldpd vim py3-pip linux-firmware htop"
+    netcat-openbsd lldpd vim py3-pip linux-firmware htop udev \
+    e2fsprogs"
 
 image_kind="$1"
 
@@ -35,7 +36,10 @@ rc-update add bootmisc sysinit
 rc-update add devfs sysinit
 rc-update add sysfs sysinit
 rc-update add networking sysinit
+rc-update add hwdrivers sysinit
+rc-update add udev sysinit
 
+rc-update add localmount default
 rc-update add sshd default
 rc-update add lldpd default
 
