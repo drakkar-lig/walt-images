@@ -2,7 +2,7 @@
 # ------------
 
 ARG ALPINE_VERSION
-FROM --platform=linux/i386 alpine:${ALPINE_VERSION}
+FROM --platform=linux/i386 i386/alpine:${ALPINE_VERSION}
 
 # specify which node models can boot this image
 LABEL walt.node.models=pc-x86-32,pc-x86-64

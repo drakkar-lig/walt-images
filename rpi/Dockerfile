@@ -60,7 +60,7 @@ COPY --from=waltplatform/rpi-boot-builder /opt/boot_files /rpi_fs/boot/common-rp
 
 # Target image
 # ------------
-FROM --platform=linux/arm/v6 alpine:${ALPINE_VERSION}
+FROM --platform=linux/arm/v6 arm32v6/alpine:${ALPINE_VERSION}
 
 # specify which node models this image can handle
 LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b,qemu-arm-32,qemu-arm-64
