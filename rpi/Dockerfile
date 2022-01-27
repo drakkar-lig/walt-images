@@ -1,11 +1,18 @@
-ARG ALPINE_VERSION
+# arguments needed in FROM statements
+ARG OS_TYPE
+ARG OS_VERSION
+ARG BASE_IMAGE
+
 FROM debian:stretch as builder
+
+# arguments needed in image build steps
+ARG OS_TYPE
+ARG OS_VERSION
+ARG KERNEL_VERSION
+ARG KERNEL_ARCHIVE
 
 # builder image
 # *************
-# For now this is only used to build a linux kernel and associated modules
-# for qemu-arm-32 and qemu-arm-64 walt nodes.
-ENV RPI_VIRT_KERNEL_ARCHIVE="https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-5.10.61.tar.xz"
 
 # setup package management
 RUN echo deb http://deb.debian.org/debian stretch-backports main >> \
@@ -23,7 +30,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
 
 # download and build a linux kernel compatible with qemu arm 'virt' machine
 WORKDIR /root
-RUN wget -O /tmp/linux.tar.xz $RPI_VIRT_KERNEL_ARCHIVE && \
+RUN wget -O /tmp/linux.tar.xz $KERNEL_ARCHIVE && \
     tar xf /tmp/linux.tar.xz && rm /tmp/linux.tar.xz
 RUN mv linux-* linux
 RUN mkdir /rpi_fs
@@ -51,8 +58,13 @@ RUN mkdir -p /rpi_fs/boot/qemu-arm-64 && \
     cp arch/arm64/boot/Image /rpi_fs/boot/qemu-arm-64/kernel
 RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-64/
 
+# get and run script to populate rootfs
+COPY rpi/populate_rootfs.sh /root
+RUN /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
+
 # add various overlays
-COPY overlays/generic overlays/ipxe overlays/rpi /rpi_fs/
+COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
+     overlays/rpi overlays/rpi-${OS_TYPE} /rpi_fs/
 
 # add a copy of SD-card boot files
 # (needed to allow rpi3+ and later to boot without a SD card)
@@ -60,7 +72,8 @@ COPY --from=waltplatform/rpi-boot-builder /opt/boot_files /rpi_fs/boot/common-rp
 
 # Target image
 # ------------
-FROM --platform=linux/arm/v6 arm32v6/alpine:${ALPINE_VERSION}
+FROM --platform=linux/arm/v6 ${BASE_IMAGE}
+ARG KERNEL_VERSION
 
 # specify which node models this image can handle
 LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b,qemu-arm-32,qemu-arm-64
@@ -70,4 +83,7 @@ LABEL walt.server.minversion=5
 
 # prepare and run customization
 COPY --from=builder /rpi_fs /
-RUN /root/customize.sh rpi
+RUN /root/customize.sh rpi ${KERNEL_VERSION}
+
+# set an entrypoint (handy when debugging)
+ENTRYPOINT /bin/sh

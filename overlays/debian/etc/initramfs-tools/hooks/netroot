@@ -1,0 +1,37 @@
+#!/bin/sh
+
+prereqs()
+{
+	true
+}
+
+case $1 in
+# get pre-requisites
+prereqs)
+	prereqs
+	exit 0
+	;;
+esac
+
+. /usr/share/initramfs-tools/hook-functions
+
+# nbfs and nfs v4 mount commands
+for cmd in mount.nbfs mount.nfs
+do
+    cmd_path="${DESTDIR}/sbin/${cmd}"
+    if [ -e /sbin/${cmd} ]
+    then
+        copy_exec /sbin/${cmd} /sbin
+    else
+        cat > "$cmd_path" << EOF
+#!/bin/sh
+echo "Sorry, ${cmd} binary was not found on this system!" >&2
+exit 1  # failed
+EOF
+        chmod +x "$cmd_path"
+    fi
+done
+
+# modules needed
+manual_add_modules fuse
+manual_add_modules nfsv4

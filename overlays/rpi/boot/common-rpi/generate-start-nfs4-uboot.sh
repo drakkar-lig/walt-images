@@ -9,8 +9,8 @@ fi
 
 SCRIPT=$(mktemp)
 cat $0 | sed '1,/SCRIPT_START$/d' > $SCRIPT
-mkimage -A arm -O linux -T script -C none -n start-nfs-uboot.scr -d $SCRIPT start-nfs.uboot
-echo "start-nfs.uboot was generated in the current directory."
+mkimage -A arm -O linux -T script -C none -n start-nfs4-uboot.scr -d $SCRIPT start-nfs4.uboot
+echo "start-nfs4.uboot was generated in the current directory."
 rm $SCRIPT
 exit
 
@@ -61,8 +61,8 @@ tftp ${ramdisk_addr_r} ${serverip}:initrd || reset
 
 # compute kernel command line args
 setenv nfs_root "${serverip}:/var/lib/walt/nodes/${ipaddr}/fs"
-setenv nfs_opts "ro,vers=3,nolock,nocto,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000"
-setenv nfs_bootargs "root=/dev/nfs boot=netroot rootfstype=netroot nfsroot=${nfs_root},${nfs_opts}"
+setenv nfs_opts "ro,nocto,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000"
+setenv nfs_bootargs "root=/dev/nfs4 boot=netroot rootfstype=netroot nfsroot=${nfs_root},${nfs_opts}"
 setenv ip_param "ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:${hostname}::off"
 setenv ip_conf "${ip_param} BOOTIF=01-${ethaddr}"
 setenv other_bootargs "init=${walt_init} panic=15 net.ifnames=0 biosdevname=0"

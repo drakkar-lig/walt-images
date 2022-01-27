@@ -4,7 +4,7 @@
 # v4.2 in our case.
 set nfs_root ${next-server}:/var/lib/walt/nodes/${mac}/fs
 set nfs_opts ro,nocto,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000
-set fs_bootargs root=/dev/nfs rootfstype=netroot nfsroot=${nfs_root},${nfs_opts}
+set fs_bootargs root=/dev/nfs4 boot=netroot rootfstype=netroot nfsroot=${nfs_root},${nfs_opts}
 
 # Try booting over http.
 # This will fail with the fake booloader, and with

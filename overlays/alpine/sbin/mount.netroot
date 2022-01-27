@@ -106,7 +106,7 @@ do
             options="$2"
             shift 2
             ;;
-        "/dev/nfs")
+        "/dev/nfs"|"/dev/nfs4")
             proto="nfs"
             remote_root="$nfsroot"
             shift

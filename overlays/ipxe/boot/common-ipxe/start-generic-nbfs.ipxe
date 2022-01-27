@@ -1,7 +1,7 @@
 #!ipxe
 # filesystem bootargs
 set nbfs_root ${next-server}:/var/lib/walt/nodes/${mac}/fs
-set fs_bootargs root=/dev/nbfs rootfstype=netroot nbfsroot=${nbfs_root}
+set fs_bootargs root=/dev/nbfs boot=netroot rootfstype=netroot nbfsroot=${nbfs_root}
 
 # Try booting over http.
 # This will fail with the fake booloader, and with

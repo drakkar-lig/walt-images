@@ -61,7 +61,7 @@ tftp ${ramdisk_addr_r} ${serverip}:initrd || reset
 
 # compute kernel command line args
 setenv nbfs_root "${serverip}:/var/lib/walt/nodes/${ipaddr}/fs"
-setenv nbfs_bootargs "root=/dev/nbfs rootfstype=netroot nbfsroot=${nbfs_root}"
+setenv nbfs_bootargs "root=/dev/nbfs boot=netroot rootfstype=netroot nbfsroot=${nbfs_root}"
 setenv ip_param "ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:${hostname}::off"
 setenv ip_conf "${ip_param} BOOTIF=01-${ethaddr}"
 setenv other_bootargs "init=${walt_init} panic=15 net.ifnames=0 biosdevname=0"
