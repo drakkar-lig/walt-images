@@ -10,7 +10,7 @@ KERNEL_ARCHIVE = "https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-${KERNEL_VE
 
 COMMON_VARS = $(KERNEL_VERSION) $(KERNEL_ARCHIVE)
 
-all: build-all
+all: build
 
 build.alpine.%:
 	./build.sh alpine $(ALPINE_VERSION) $* $(COMMON_VARS)
@@ -21,22 +21,17 @@ build.debian.%:
 b.%:
 	$(MAKE) build.$*.rpi build.$*.pc-x86-32 build.$*.pc-x86-64
 
-build-all:
+build:
 	$(MAKE) b.debian b.alpine
 
 publish.alpine.%:
-	docker push waltplatform/$*-alpine:latest
-	docker push waltplatform/$*-alpine:$(ALPINE_VERSION)
+	./publish.sh alpine $(ALPINE_VERSION) $*
 
-# note: debian images are also the default image for each node model
 publish.debian.%:
-	docker push waltplatform/$*-debian:latest
-	docker push waltplatform/$*-debian:$(DEBIAN_VERSION)
-	docker tag waltplatform/$*-debian:latest waltplatform/$*-default:latest
-	docker push waltplatform/$*-default:latest
+	./publish.sh debian $(DEBIAN_VERSION) $*
 
 p.%:
 	$(MAKE) publish.$*.pc-x86-64 publish.$*.pc-x86-32 publish.$*.rpi
 
-publish-all:
+publish:
 	$(MAKE) p.alpine p.debian
