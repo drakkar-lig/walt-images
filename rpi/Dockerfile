@@ -3,7 +3,7 @@ ARG OS_TYPE
 ARG OS_VERSION
 ARG BASE_IMAGE
 
-FROM debian:stretch as builder
+FROM debian:bullseye as builder
 
 # arguments needed in image build steps
 ARG OS_TYPE
@@ -15,9 +15,7 @@ ARG KERNEL_ARCHIVE
 # *************
 
 # setup package management
-RUN echo deb http://deb.debian.org/debian stretch-backports main >> \
-            /etc/apt/sources.list.d/backports.list && \
-    echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
+RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
 
 # install packages
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
@@ -28,12 +26,15 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     dpkg-dev debhelper bash-completion shellcheck rdfind && \
     apt-get clean
 
+# get and run script to populate rootfs
+COPY rpi/populate_rootfs.sh /root
+RUN /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
+
 # download and build a linux kernel compatible with qemu arm 'virt' machine
 WORKDIR /root
 RUN wget -O /tmp/linux.tar.xz $KERNEL_ARCHIVE && \
     tar xf /tmp/linux.tar.xz && rm /tmp/linux.tar.xz
 RUN mv linux-* linux
-RUN mkdir /rpi_fs
 WORKDIR /root/linux
 
 # 32-bit version
@@ -57,10 +58,6 @@ RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-64 && \
     cp arch/arm64/boot/Image /rpi_fs/boot/qemu-arm-64/kernel
 RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-64/
-
-# get and run script to populate rootfs
-COPY rpi/populate_rootfs.sh /root
-RUN /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
 
 # add various overlays
 COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
