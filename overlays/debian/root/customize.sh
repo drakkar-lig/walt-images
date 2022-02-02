@@ -5,7 +5,7 @@ set -e
 PACKAGES="init ssh openssh-server usbutils texinfo \
     locales netcat lldpd vim python3-pip kexec-tools \
     firmware-realtek firmware-bnx2 firmware-bnx2x firmware-qlogic \
-    firmware-atheros firmware-misc-nonfree \
+    firmware-atheros firmware-brcm80211 firmware-misc-nonfree \
     htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
     lockfile-progs avahi-daemon libnss-mdns cron ptpd initramfs-tools nfs-common"
 
