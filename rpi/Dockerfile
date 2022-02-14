@@ -66,6 +66,8 @@ COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
 # add a copy of SD-card boot files
 # (needed to allow rpi3+ and later to boot without a SD card)
 COPY --from=waltplatform/rpi-boot-builder /opt/boot_files /rpi_fs/boot/common-rpi/sd-card
+# disable auto-update of rpi4 eeprom at this step (managed by the sdcard files)
+RUN rm -f /rpi_fs/boot/common-rpi/sd-card/recovery.bin /rpi_fs/boot/common-rpi/sd-card/pieeprom.*
 
 # Target image
 # ------------
