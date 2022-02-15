@@ -85,6 +85,8 @@ then
     do
         mkimage -A arm -T ramdisk -C none -n uInitrd -d /boot/$f /boot/common-rpi/$f.uboot
     done
+    # our image is based on arm32v6/alpine which does not work on the rpi4
+    rm -rf /boot/rpi-4-b
 fi
 
 # Allow passwordless root login on the serial console

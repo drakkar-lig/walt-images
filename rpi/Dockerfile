@@ -72,10 +72,11 @@ RUN rm -f /rpi_fs/boot/common-rpi/sd-card/recovery.bin /rpi_fs/boot/common-rpi/s
 # Target image
 # ------------
 FROM --platform=linux/arm/v6 ${BASE_IMAGE}
+ARG MODELS
 ARG KERNEL_VERSION
 
 # specify which node models this image can handle
-LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b,qemu-arm-32,qemu-arm-64
+LABEL walt.node.models=${MODELS}
 
 # specify min walt server version needed
 LABEL walt.server.minversion=5

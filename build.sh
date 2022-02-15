@@ -23,15 +23,24 @@ then
             # we consider the official arm32v6 alpine image is suitable
             # for raspberry pi boards
             base_image="arm32v6/alpine:$os_version"
+            # unfortunately this image provides no kernel for the rpi4 board,
+            # so model rpi-4-b is excluded from our models.
+            # (linux-rpi2 packages used for models 2 & 3 works but we miss the
+            # broadcom genet ethernet driver.)
+            # future work: if building from aarch64 version, we could make an image
+            # for models rpi3b, rpi3b+ and rpi4b.
+            models="rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,qemu-arm-32,qemu-arm-64"
             ;;
         "debian")
             # we generate a filesystem hierarchy in the builder step
             # by using debootstrap (see rpi/Dockerfile and rpi/populate_rootfs.sh)
             base_image="scratch"
+            models="rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b,qemu-arm-32,qemu-arm-64"
             ;;
     esac
 
-    build_args="$build_args --build-arg KERNEL_VERSION=$kernel_version \
+    build_args="$build_args --build-arg MODELS=$models \
+                            --build-arg KERNEL_VERSION=$kernel_version \
 							--build-arg KERNEL_ARCHIVE=$kernel_archive \
                             --build-arg BASE_IMAGE=$base_image"
 fi
