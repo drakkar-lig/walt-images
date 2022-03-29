@@ -65,9 +65,19 @@ COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
 
 # add a copy of SD-card boot files
 # (needed to allow rpi3+ and later to boot without a SD card)
-COPY --from=waltplatform/rpi-boot-builder /opt/boot_files /rpi_fs/boot/common-rpi/sd-card
-# disable auto-update of rpi4 eeprom at this step (managed by the sdcard files)
-RUN rm -f /rpi_fs/boot/common-rpi/sd-card/recovery.bin /rpi_fs/boot/common-rpi/sd-card/pieeprom.*
+COPY --from=waltplatform/rpi-boot-builder \
+            /opt/boot_files/boot.scr.uimg \
+            /opt/boot_files/cmdline.txt \
+            /opt/boot_files/config.txt \
+            /opt/boot_files/u-boot-rpi-3-b.img \
+            /opt/boot_files/u-boot-rpi-4-b.img \
+    /rpi_fs/boot/common-rpi/
+# when using firmware network boot (boot without a SD card), dtb will be loaded
+# directly by firmware, and u-boot should not make a new TFTP request for it.
+# the firmware-provided dtb has custom modifications that u-boot cannot apply
+# when loading another dtb, thus bypassing this secondary dtb loading preserves
+# us from problems.
+RUN sed -i -e "s/$/ preserve_dtb=1/" /rpi_fs/boot/common-rpi/cmdline.txt
 
 # Target image
 # ------------

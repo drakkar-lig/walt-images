@@ -1,1 +1,1 @@
-../common-rpi/sd-card/config.txt
+../common-rpi/config.txt
