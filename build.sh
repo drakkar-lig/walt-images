@@ -54,7 +54,7 @@ then
     cat "$model_type/$os_type/Dockerfile.extension" >> $dockerfile
 fi
 
-docker build $build_args -f $dockerfile \
+nice docker build $build_args -f $dockerfile \
 		--tag=waltplatform/$model_type-$os_type:latest .
 docker tag waltplatform/$model_type-$os_type:latest \
 			waltplatform/$model_type-$os_type:$os_version

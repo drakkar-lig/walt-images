@@ -41,7 +41,7 @@ WORKDIR /root/linux
 ENV ARCH=arm
 ENV CROSS_COMPILE=arm-linux-gnueabi-
 ADD rpi/linux-arm32.config .config
-RUN make olddefconfig && make -j
+RUN make olddefconfig && make -j $(nproc)
 RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-32 && \
     cp arch/arm/boot/zImage /rpi_fs/boot/qemu-arm-32/kernel
@@ -53,7 +53,7 @@ RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-32/
 ENV ARCH=arm64
 ENV CROSS_COMPILE=aarch64-linux-gnu-
 ADD rpi/linux-arm64.config .config
-RUN make olddefconfig && make -j
+RUN make olddefconfig && make -j $(nproc)
 RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-64 && \
     cp arch/arm64/boot/Image /rpi_fs/boot/qemu-arm-64/kernel
