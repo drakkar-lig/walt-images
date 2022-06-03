@@ -1,0 +1,3 @@
+
+# debian is the defaut image for various rpi models
+LABEL walt.image.preferred-name=rpi-default

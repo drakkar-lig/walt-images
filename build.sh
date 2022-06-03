@@ -6,6 +6,7 @@ os_version="$2"
 model_type="$3"
 kernel_version="$4"
 kernel_archive="$5"
+tmp_dir=$(mktemp -d)
 
 if [ "$5" = "" ]
 then
@@ -45,8 +46,17 @@ then
                             --build-arg BASE_IMAGE=$base_image"
 fi
 
-docker build $build_args -f $model_type/Dockerfile \
+dockerfile=$tmp_dir/Dockerfile
+cp $model_type/Dockerfile $dockerfile
+
+if [ -f "$model_type/$os_type/Dockerfile.extension" ]
+then
+    cat "$model_type/$os_type/Dockerfile.extension" >> $dockerfile
+fi
+
+docker build $build_args -f $dockerfile \
 		--tag=waltplatform/$model_type-$os_type:latest .
 docker tag waltplatform/$model_type-$os_type:latest \
 			waltplatform/$model_type-$os_type:$os_version
 
+rm -rf $tmp_dir
