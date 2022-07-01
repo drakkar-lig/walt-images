@@ -1,0 +1,60 @@
+#!/bin/sh
+
+set -x
+set -e
+sysroot=/sysroot
+
+echo "Initramfs custom init for OpenWRT with WALT"
+
+/bin/busybox mkdir -p /usr/bin /usr/sbin /proc /sys /dev $sysroot /tmp /run
+
+# install busybox applet symlinks
+/bin/busybox --install -s
+
+# update path
+export PATH=/usr/bin:/bin:/usr/sbin:/sbin
+
+# mount filesystems
+mount -t sysfs -o noexec,nosuid,nodev sysfs /sys
+mount -t proc -o noexec,nosuid,nodev proc /proc
+
+# create device files
+[ -e /dev/console ] || mknod -m 600 /dev/console c 5 1
+[ -e /dev/null ] || mknod -m 666 /dev/null c 1 3
+[ -e /dev/zero ] || mknod -m 666 /dev/zero c 1 5
+[ -e /dev/tty ] || mknod -m 666 /dev/tty c 5 0
+[ -e /dev/tty0 ] || mknod -m 660 /dev/tty0 c 4 0
+[ -e /dev/tty1 ] || mknod -m 660 /dev/tty1 c 4 1
+[ -e /dev/random ] || mknod -m 666 /dev/random c 1 8
+[ -e /dev/urandom ] || mknod -m 666 /dev/urandom c 1 9
+[ -e /dev/fuse ] || mknod -m 600 /dev/fuse c 10 229
+
+# read kernel options
+set -- $(cat /proc/cmdline)
+
+myopts="init root ip rootfstype BOOTIF"
+
+for opt; do
+	for i in $myopts; do
+		case "$opt" in
+		$i=*)	eval "${i}"='${opt#*=}';;
+		esac
+	done
+done
+
+# set default values
+: ${init:=/sbin/init}
+
+mount ${rootfstype:+-t} ${rootfstype} \
+			-o ${rootflags:-ro} \
+			${root} $sysroot
+
+cat /proc/mounts | while read DEV DIR TYPE OPTS ; do
+    if [ "$DIR" != "/" -a "$DIR" != "$sysroot" -a -d "$DIR" ]; then
+        mount -o move $DIR $sysroot/$DIR
+    fi
+done
+
+sync
+export INITRAMFS=1
+exec /bin/busybox switch_root $sysroot "$init"
