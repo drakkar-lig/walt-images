@@ -1,7 +1,6 @@
 # arguments needed in FROM statements
 ARG OS_TYPE
 ARG OS_VERSION
-ARG BASE_IMAGE
 
 FROM debian:bullseye as builder
 
@@ -81,12 +80,11 @@ RUN sed -i -e "s/$/ preserve_dtb=1/" /rpi_fs/boot/common-rpi/cmdline.txt
 
 # Target image
 # ------------
-FROM --platform=linux/arm/v6 ${BASE_IMAGE}
-ARG MODELS
+FROM --platform=linux/arm/v6 scratch
 ARG KERNEL_VERSION
 
 # specify which node models this image can handle
-LABEL walt.node.models=${MODELS}
+LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b,qemu-arm-32,qemu-arm-64
 
 # specify min walt server version needed
 LABEL walt.server.minversion=5
@@ -97,3 +95,6 @@ RUN /root/customize.sh rpi ${KERNEL_VERSION}
 
 # set an entrypoint (handy when debugging)
 ENTRYPOINT /bin/sh
+
+# debian is the defaut image for various rpi models
+LABEL walt.image.preferred-name=rpi-default
