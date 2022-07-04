@@ -7,5 +7,6 @@ KERNEL_VERSION = "5.10.63"
 KERNEL_ARCHIVE = f"https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-{KERNEL_VERSION}.tar.xz"
 OS_VERSIONS = {
     'alpine': "3.13.7",
-    'debian': "bullseye"
+    'debian': "bullseye",
+    'openwrt': "21.02.3"
 }

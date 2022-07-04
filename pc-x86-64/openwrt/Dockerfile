@@ -1,17 +1,15 @@
-# Step 1: shortcut to pc-x86-64-alpine
-# ------------------------------------
-# We will reuse most of the boot files of our alpine
-# image, so let's create a shortcut for it.
-FROM waltplatform/pc-x86-64-alpine:latest as alpine-base
+ARG OS_TYPE
+ARG OS_VERSION
 
-# Step 2: build the root filesystem
+# Step 1: build the root filesystem
 # ---------------------------------
 FROM debian:bullseye as openwrt-builder
+ARG OS_VERSION
 RUN apt update && apt install -y build-essential git gawk gcc-multilib flex gettext libncurses5-dev libssl-dev python3-distutils zlib1g-dev unzip wget file rsync cpio vim python2 libcap-dev liblzma-dev libldap2-dev libpam0g-dev libgnutls28-dev libidn2-dev libssh2-1-dev libsnmp-dev libjansson-dev
 WORKDIR /root
 RUN git clone https://git.openwrt.org/openwrt/openwrt.git
 WORKDIR /root/openwrt
-RUN git checkout -b openwrt-v21.02.3 v21.02.3
+RUN git checkout -b openwrt-v${OS_VERSION} v${OS_VERSION}
 RUN ./scripts/feeds update -a
 RUN ./scripts/feeds install -a
 
@@ -53,39 +51,39 @@ RUN ./scripts/feeds install -a
 # for debugging, use:
 # $ FORCE_UNSAFE_CONFIGURE=1 nice make -j1 V=s [menuconfig|...]
 #
-COPY config-5.4 target/linux/x86/config-5.4
-COPY openwrt.config .config
+COPY pc-x86-64/openwrt/config-5.4 target/linux/x86/config-5.4
+COPY pc-x86-64/openwrt/openwrt.config .config
 RUN make defconfig
 RUN FORCE_UNSAFE_CONFIGURE=1 nice make -j$(nproc)
-
-# create initramfs
-COPY initrd_skeleton /root/initrd
-RUN mkdir -p /root/initrd/sbin
-COPY --from=alpine-base /sbin/mount.nbfs /root/initrd/sbin/
-COPY create_initramfs.sh /root
-RUN /root/create_initramfs.sh
 
 # create image root filesystem
 RUN mkdir /root/rootfs
 WORKDIR /root/rootfs
 RUN tar xf /root/openwrt/bin/targets/x86/64/openwrt-x86-64-generic-rootfs.tar.gz
 WORKDIR /root/rootfs/dev
-ADD dev-content.tar.gz .
+ADD pc-x86-64/openwrt/dev-content.tar.gz .
 WORKDIR /root/rootfs
 RUN rm etc/rc.d/S*network   # disable network service startup (breaks the running NFS)
 RUN mkdir -p etc/walt usr/bin run
-ADD rootfs_overlay/ .
-COPY --from=alpine-base /boot ./boot
-COPY --from=alpine-base /etc/walt/image.spec etc/walt/
-COPY --from=alpine-base /usr/bin/activate-nbfs.sh usr/bin/
+COPY overlays/generic overlays/openwrt overlays/ipxe \
+     overlays/pc overlays/pc-x86-64 /root/rootfs/
 WORKDIR /root/rootfs/boot
 RUN rm -f System.map-lts config-lts vmlinuz-lts initramfs-lts
+
+# create initramfs
+COPY pc-x86-64/openwrt/initrd_skeleton /root/initrd
+RUN mkdir -p /root/initrd/sbin
+RUN mv /root/rootfs/sbin/mount.nbfs /root/initrd/sbin/  # mount.nbfs is only needed in the initrd
+COPY pc-x86-64/openwrt/create_initramfs.sh /root
+RUN /root/create_initramfs.sh
+
+# finalize image root filesystem
 RUN cp /root/openwrt/bin/targets/x86/64/*-kernel.bin /root/initramfs.cpio.gz .
 WORKDIR /root/rootfs/boot/common-pc
 RUN ln -sf ../*-kernel.bin kernel
 RUN ln -sf ../initramfs.cpio.gz initrd
 
-# Step 3: Build the final image
+# Step 2: Build the final image
 # -----------------------------
 FROM scratch
 # specify which node models this image can handle
