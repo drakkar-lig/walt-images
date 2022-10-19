@@ -34,8 +34,8 @@ then
     /debootstrap/debootstrap --second-stage
     mv /bin/mount.saved /bin/mount
 
-    # update apt repositories
-    cp /etc/apt/sources.list.saved /etc/apt/sources.list
+    # update apt repositories for faster build
+    mv /etc/apt/sources.list.fast /etc/apt/sources.list
 
     # register Raspberry Pi Archive Signing Key
     apt-key add - < /root/82B129927FA3303E.pub
@@ -128,6 +128,12 @@ systemctl disable apt-daily-upgrade.timer
 if [ "$image_kind" = "rpi" ]
 then
     systemctl disable rpi-eeprom-update
+fi
+
+if [ "$image_kind" = "rpi" ]
+then
+    # restore official apt repositories
+    mv /etc/apt/sources.list.official /etc/apt/sources.list
 fi
 
 # cleanup
