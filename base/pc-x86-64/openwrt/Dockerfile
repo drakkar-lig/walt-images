@@ -51,8 +51,8 @@ RUN ./scripts/feeds install -a
 # for debugging, use:
 # $ FORCE_UNSAFE_CONFIGURE=1 nice make -j1 V=s [menuconfig|...]
 #
-COPY pc-x86-64/openwrt/config-5.4 target/linux/x86/config-5.4
-COPY pc-x86-64/openwrt/openwrt.config .config
+COPY base/pc-x86-64/openwrt/config-5.4 target/linux/x86/config-5.4
+COPY base/pc-x86-64/openwrt/openwrt.config .config
 # comment out uwaterloo mirror (too slow)
 RUN sed -i -e 's/\(push .*uwaterloo.*;\)/#\1/g' /root/openwrt/scripts/download.pl
 RUN make defconfig
@@ -63,7 +63,7 @@ RUN mkdir /root/rootfs
 WORKDIR /root/rootfs
 RUN tar xf /root/openwrt/bin/targets/x86/64/openwrt-x86-64-generic-rootfs.tar.gz
 WORKDIR /root/rootfs/dev
-ADD pc-x86-64/openwrt/dev-content.tar.gz .
+ADD base/pc-x86-64/openwrt/dev-content.tar.gz .
 WORKDIR /root/rootfs
 RUN rm etc/rc.d/S*network   # disable network service startup (breaks the running NFS)
 RUN mkdir -p etc/walt usr/bin run
@@ -73,10 +73,10 @@ WORKDIR /root/rootfs/boot
 RUN rm -f System.map-lts config-lts vmlinuz-lts initramfs-lts
 
 # create initramfs
-COPY pc-x86-64/openwrt/initrd_skeleton /root/initrd
+COPY base/pc-x86-64/openwrt/initrd_skeleton /root/initrd
 RUN mkdir -p /root/initrd/sbin
 RUN mv /root/rootfs/sbin/mount.nbfs /root/initrd/sbin/  # mount.nbfs is only needed in the initrd
-COPY pc-x86-64/openwrt/create_initramfs.sh /root
+COPY base/pc-x86-64/openwrt/create_initramfs.sh /root
 RUN /root/create_initramfs.sh
 
 # finalize image root filesystem

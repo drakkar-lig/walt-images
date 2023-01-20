@@ -26,7 +26,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     apt-get clean
 
 # get and run script to populate rootfs
-COPY rpi/populate_rootfs.sh /root
+COPY base/rpi/populate_rootfs.sh /root
 RUN /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
 
 # download and build a linux kernel compatible with qemu arm 'virt' machine
@@ -39,7 +39,7 @@ WORKDIR /root/linux
 # 32-bit version
 ENV ARCH=arm
 ENV CROSS_COMPILE=arm-linux-gnueabi-
-ADD rpi/linux-arm32.config .config
+ADD base/rpi/linux-arm32.config .config
 RUN make olddefconfig && make -j $(nproc)
 RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-32 && \
@@ -51,7 +51,7 @@ RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-32/
 # thus we deploy a plain Image.
 ENV ARCH=arm64
 ENV CROSS_COMPILE=aarch64-linux-gnu-
-ADD rpi/linux-arm64.config .config
+ADD base/rpi/linux-arm64.config .config
 RUN make olddefconfig && make -j $(nproc)
 RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-64 && \
