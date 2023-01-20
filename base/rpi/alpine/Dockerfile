@@ -65,7 +65,6 @@ COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
 # add a copy of SD-card boot files
 # (needed to allow rpi3+ and later to boot without a SD card)
 COPY --from=waltplatform/rpi-boot-builder \
-            /opt/boot_files/boot.scr.uimg \
             /opt/boot_files/cmdline.txt \
             /opt/boot_files/config.txt \
             /opt/boot_files/u-boot-rpi-3-b.img \
