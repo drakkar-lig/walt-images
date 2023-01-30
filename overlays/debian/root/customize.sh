@@ -116,6 +116,10 @@ then
 
     # generate other boot files
     /boot/common-rpi/generate-boot-files.sh
+
+    # let systemd use the watchdog with a 15s timeout
+    sed -i -e 's/.*\(RuntimeWatchdogSec\).*/\1=15/g' \
+           -e 's/.*\(RebootWatchdogSec\).*/\1=15/g' /etc/systemd/system.conf
 fi
 
 # Allow passwordless root login on the serial console
