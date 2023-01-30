@@ -12,7 +12,7 @@ HAS_KEXEC=0
 
 case "$image_kind" in
     "rpi")
-        PACKAGES="linux-rpi linux-rpi2 uboot-tools \
+        PACKAGES="linux-rpi linux-rpi2 uboot-tools dtc \
                   raspberrypi-bootloader \
                   raspberrypi  $PACKAGES"
         ;;
@@ -87,6 +87,8 @@ then
     done
     # our image is based on arm32v6/alpine which does not work on the rpi4
     rm -rf /boot/rpi-4-b
+    # generate other boot files
+    /boot/common-rpi/generate-boot-files.sh
 fi
 
 # Allow passwordless root login on the serial console

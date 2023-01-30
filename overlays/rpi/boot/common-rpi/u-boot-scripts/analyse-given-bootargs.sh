@@ -1,26 +1,3 @@
-#!/bin/sh
-set -e
-# Just execute this script to generate rpi.uboot script.
-if [ "$(which mkimage)" = "" ]
-then
-    echo "Error: u-boot's mkimage tool is needed (cf. u-boot-tools package). ABORTED."
-    exit
-fi
-
-SCRIPT=$(mktemp)
-cat $0 | sed '1,/SCRIPT_START$/d' > $SCRIPT
-mkimage -A arm -O linux -T script -C none -n start-nfs4-uboot.scr -d $SCRIPT start-nfs4.uboot
-echo "start-nfs4.uboot was generated in the current directory."
-rm $SCRIPT
-exit
-
-######################## SCRIPT_START
-echo 'Env variables:'
-echo '--------------'
-printenv
-echo
-
-setenv walt_init "/bin/walt-init"
 
 # In a usual boot scenario, Raspberry pi boards start their firmware, which loads
 # device tree file (dtb), linux kernel, and optional initramfs from the SD card.
@@ -67,55 +44,43 @@ fdt get value given_bootargs /chosen bootargs
 # * root=, rootfstype=, rootwait are not set correctly for walt context
 # * kgdboc="..."  may make the kernel bootup fail (and hang!) in some cases
 #   (support for kgdb may just be missing in the kernel)
-setenv bootargs ""
+setenv preserved_bootargs ""
 setenv preserve_dtb 0
+
 for arg in "${given_bootargs}"
 do
-    if test "$arg" = "preserve_dtb=1"
-    then
-        setenv preserve_dtb 1
-    else
-        setexpr rootprefix sub "(root).*" "root" "${arg}"
-        if test "$rootprefix" != "root"
-        then
-            setexpr kgdbprefix sub "(kgdboc).*" "kgdboc" "${arg}"
-            if test "$kgdbprefix" != "kgdboc"
-            then
-                # OK, we can keep this bootarg given by the firmware
-                setenv bootargs "${bootargs} ${arg}"
-            fi
-        fi
-    fi
+	arg_continue=1
+	if test "$arg_continue" = 1
+	then
+		setenv uboot_arg "none"
+		setexpr uboot_arg sub "u-boot:" "" "${arg}"
+		echo "uboot_arg: $uboot_arg"
+		if test "${uboot_arg}" != "none"
+		then
+			echo "setenv $uboot_arg 1"
+			setenv $uboot_arg 1
+			arg_continue=0
+		fi
+	fi
+	if test "$arg_continue" = 1
+	then
+		setexpr rootprefix sub "(root).*" "root" "${arg}"
+		if test "$rootprefix" = "root"
+		then
+			arg_continue=0	# ignore this argument
+		fi
+	fi
+	if test "$arg_continue" = 1
+	then
+		setexpr kgdbprefix sub "(kgdboc).*" "kgdboc" "${arg}"
+		if test "$kgdbprefix" = "kgdboc"
+		then
+			arg_continue=0  # ignore this argument
+		fi
+	fi
+	if test "$arg_continue" = 1
+	then
+		# OK, we can keep this bootarg given by the firmware
+		setenv preserved_bootargs "${preserved_bootargs} ${arg}"
+	fi
 done
-
-# retrieve or select the dtb (device-tree-blob)
-if test "$preserve_dtb" = "1"
-then
-    # If the board firmware has retrieved files directly, it could
-    # load the device tree file stored on the walt image directly and pass it
-    # to u-boot.
-    setenv fdt_selected "${fdt_addr}"
-else
-    # We are probably booting using the SD card, which means the
-    # dtb loaded by the firmware is the one on the SD card. We need the one
-    # in the walt image instead.
-    tftp ${fdt_addr_r} ${serverip}:dtb || reset
-    setenv fdt_selected "${fdt_addr_r}"
-fi
-
-# retrieve kernel and initrd
-tftp ${kernel_addr_r} ${serverip}:kernel || reset
-tftp ${ramdisk_addr_r} ${serverip}:initrd || reset
-
-# compute kernel command line args
-setenv nfs_root "${serverip}:/var/lib/walt/nodes/${ipaddr}/fs"
-setenv nfs_opts "ro,nocto,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000"
-setenv nfs_bootargs "root=/dev/nfs4 boot=netroot rootfstype=netroot nfsroot=${nfs_root},${nfs_opts}"
-setenv ip_param "ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:${hostname}::off"
-setenv ip_conf "${ip_param} BOOTIF=01-${ethaddr}"
-setenv other_bootargs "init=${walt_init} panic=15 net.ifnames=0 biosdevname=0"
-setenv bootargs "$bootargs $nfs_bootargs $ip_conf $other_bootargs"
-
-# boot
-echo 'Booting kernel...'
-bootz ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_selected} || reset

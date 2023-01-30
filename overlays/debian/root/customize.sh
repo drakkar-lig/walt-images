@@ -113,6 +113,9 @@ then
         # link into relevant dir
         ln -s "../$initrd_name.uboot" /boot/$model/initrd
     done
+
+    # generate other boot files
+    /boot/common-rpi/generate-boot-files.sh
 fi
 
 # Allow passwordless root login on the serial console

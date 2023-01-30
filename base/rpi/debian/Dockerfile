@@ -75,7 +75,7 @@ COPY --from=waltplatform/rpi-boot-builder \
 # the firmware-provided dtb has custom modifications that u-boot cannot apply
 # when loading another dtb, thus bypassing this secondary dtb loading preserves
 # us from problems.
-RUN sed -i -e "s/$/ preserve_dtb=1/" /rpi_fs/boot/common-rpi/cmdline.txt
+RUN sed -i -e "s/$/ u-boot:preserve_dtb/" /rpi_fs/boot/common-rpi/cmdline.txt
 
 # Target image
 # ------------
