@@ -132,6 +132,9 @@ systemctl enable uptime-ready
 systemctl disable systemd-timesyncd
 systemctl disable apt-daily.timer
 systemctl disable apt-daily-upgrade.timer
+systemctl disable exim4.service
+systemctl disable kexec-load.service
+systemctl disable kexec.service
 if [ "$image_kind" = "rpi" ]
 then
     systemctl disable rpi-eeprom-update
