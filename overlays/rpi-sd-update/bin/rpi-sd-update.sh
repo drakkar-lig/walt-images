@@ -111,10 +111,12 @@ fi
 walt-log-echo rpi-sd-update "Updating files."
 mount -o remount,rw /media/sdcard
 cd /media/sdcard
-files=$(ls -1 | grep -v obsolete | grep -v walt.expanded)
 saved_dir="/media/sdcard/obsolete/$(date +%s.%N)/"
 mkdir -p $saved_dir
-mv $files $saved_dir
+ls -1 | grep -v obsolete | grep -v walt.expanded | while read f
+do
+    mv "$f" $saved_dir
+done
 cp -r /opt/walt/rpi-sd/* .
 cd /
 
