@@ -85,8 +85,8 @@ then
     do
         mkimage -A arm -T ramdisk -C none -n uInitrd -d /boot/$f /boot/common-rpi/$f.uboot
     done
-    # our image is based on arm32v6/alpine which does not work on the rpi4
-    rm -rf /boot/rpi-4-b
+    # our image is based on arm32v6/alpine which does not work on the rpi4 and rpi400
+    rm -rf /boot/rpi-4-b /boot/rpi-400
     # generate other boot files
     /boot/common-rpi/generate-boot-files.sh
 fi

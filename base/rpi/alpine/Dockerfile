@@ -90,7 +90,7 @@ ARG KERNEL_VERSION
 # (linux-rpi2 packages used for models 2 & 3 works but we miss the
 # broadcom genet ethernet driver.)
 # future work: if building from aarch64 version, we could make an image
-# for models rpi3b, rpi3b+ and rpi4b.
+# for models rpi3b, rpi3b+ and rpi4b & rpi400.
 LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,qemu-arm-32,qemu-arm-64
 
 # specify min walt server version needed
