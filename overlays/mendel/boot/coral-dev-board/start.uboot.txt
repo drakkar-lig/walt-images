@@ -1,0 +1,71 @@
+# Address $scriptaddr should be given by the boot.scr script
+# resident on the node, and is the address at which this
+# start.uboot script is loaded.
+#scriptaddr=0x42f00000
+
+# We define the following addresses
+loadaddr=0x40480000
+fdt_addr=0x43000000
+initrd_addr=0x43800000
+
+setenv nfs_root "${serverip}:/var/lib/walt/nodes/${ipaddr}/fs"
+# we use kernel-based nfs-root (not initramfs-based), so few nfs options are available
+setenv nfs_opts "v3,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000"
+setenv fs_bootargs "root=/dev/nfs nfsroot=${nfs_root},${nfs_opts}"
+
+setenv walt_init "/bin/walt-init"
+
+# compute the full list of kernel command line args
+setenv ip_param "ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:${hostname}::off"
+setenv ip_conf "${ip_param} BOOTIF=01-${ethaddr}"
+setenv console_bootargs "console=ttymxc0,115200 console=tty0 earlycon=ec_imx6q,0x30860000,115200"
+setenv other_bootargs "init=${walt_init} panic=15 net.ifnames=0 pci=pcie_bus_perf"
+setenv bootargs "$extra_bootargs $fs_bootargs $ip_conf $console_bootargs $other_bootargs"
+
+# download kernel
+tftp ${loadaddr} kernel || reset
+
+# download dtb
+if test ${baseboardid} = 1; then
+    setenv fdt_file fsl-imx8mq-phanbell.dtb
+elif test ${baseboardid} = 2; then
+    setenv fdt_file fsl-imx8mq-yorktown.dtb
+else
+    # EVT Boards have quirky baseboard ID resistors, so fall back
+    # to phanbell if we're unsure what the board is.
+    echo "Unknown baseboard revision, selecting phanbell dtb."
+    setenv fdt_file fsl-imx8mq-phanbell.dtb
+fi
+tftp ${fdt_addr} ${fdt_file} || reset
+fdt addr ${fdt_addr}
+fdt resize
+
+# load overlays to arbitrary address beyond fdt location (will apply them later).
+setexpr fdtovaddr ${fdt_addr} + F000
+
+# Parse overlays.txt and apply individual overlays.
+if tftp ${fdtovaddr} overlays.txt && env import -t ${fdtovaddr} ${filesize} && test -n ${overlay}; then
+	echo loaded overlay.txt: ${overlay}
+	for ov in ${overlay}; do
+		if tftp ${fdtovaddr} ${ov}.dtbo && fdt apply ${fdtovaddr}; then
+			echo overlay of ${ov} successful
+		else
+			echo overlay failed, reverting to original device tree
+			tftp ${fdt_addr} ${fdt_file} || reset
+		fi
+	done
+fi
+
+if printenv m4enabled; then
+	if test ${m4enabled} = 1; then
+		if tftp ${fdtovaddr} fsl-imx8mq-phanbell-m4.dtbo && fdt apply ${fdtovaddr}; then
+			echo M4 overlay loaded, starting core
+			run m4boot
+		else
+			echo M4 overlay failed
+		fi
+	fi
+fi
+
+# Boot the kernel
+booti ${loadaddr} - ${fdt_addr} || reset

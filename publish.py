@@ -66,13 +66,14 @@ else:
                 get_base_image_description(os_type, model_type, 'short'),
                 get_base_image_description(os_type, model_type, 'long'))
 
-    # note: debian images are also the default image for each node model
-    if os_type == "debian":
-        if model_type == 'rpi':
-            models = get_node_models_of_image(image_latest)
-        else:
-            models = [ model_type ]
-        for model in models:
+    # if the OS is the default one for a board model, also tag the image
+    # with 'waltplatform/<model>-default' and push it
+    if model_type == 'rpi':
+        models = get_node_models_of_image(image_latest)
+    else:
+        models = [ model_type ]
+    for model in models:
+        if os_type == env.DEFAULT_OS_TYPE_PER_BOARD_MODEL[model]:
             hub_repo_name = f"waltplatform/{model}-default"
             image_model_default = f"{hub_repo_name}:latest"
             run(f'docker tag {image_latest} {image_model_default}')

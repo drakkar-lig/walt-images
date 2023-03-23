@@ -8,7 +8,8 @@ KERNEL_ARCHIVE = f"https://cdn.kernel.org/pub/linux/kernel/v5.x/linux-{KERNEL_VE
 OS_VERSIONS = {
     'alpine': "3.13.7",
     'debian': "bullseye",
-    'openwrt': "21.02.3"
+    'openwrt': "21.02.3",
+    'mendel': "20211117215217",
 }
 
 LABELS_PER_BOARD_MODEL = {
@@ -24,6 +25,22 @@ LABELS_PER_BOARD_MODEL = {
     'qemu-arm-64': { 'short': '64-bit ARM qemu VMs', 'long': '64-bit ARM qemu VMs' },
     'pc-x86-32': { 'short': '32-bit PC machines', 'long': '32-bit PC machines' },
     'pc-x86-64': { 'short': '64-bit PC machines', 'long': '64-bit PC machines' },
+    'coral-dev-board': { 'short': 'Coral Dev Boards', 'long': 'Google Coral Dev Boards' },
+}
+
+DEFAULT_OS_TYPE_PER_BOARD_MODEL = {
+    'rpi-b': 'debian',
+    'rpi-b-plus': 'debian',
+    'rpi-2-b': 'debian',
+    'rpi-3-b': 'debian',
+    'rpi-3-b-plus': 'debian',
+    'rpi-4-b': 'debian',
+    'rpi-400': 'debian',
+    'qemu-arm-32': 'debian',
+    'qemu-arm-64': 'debian',
+    'pc-x86-32': 'debian',
+    'pc-x86-64': 'debian',
+    'coral-dev-board': 'mendel',
 }
 
 OS_TYPE_LABEL = {
@@ -31,6 +48,7 @@ OS_TYPE_LABEL = {
     'debian': 'Debian OS',
     'alpine': 'Alpine OS',
     'openwrt': 'OpenWRT',
+    'mendel': 'Mendel Linux',
 }
 
 IMAGE_OVERALL_TEMPLATE = """
