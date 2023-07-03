@@ -96,4 +96,4 @@ RUN /root/customize.sh rpi ${KERNEL_VERSION}
 ENTRYPOINT /bin/sh
 
 # debian is the defaut image for various rpi models
-LABEL walt.image.preferred-name=rpi-default
+LABEL walt.image.preferred-name=rpi-default:latest
