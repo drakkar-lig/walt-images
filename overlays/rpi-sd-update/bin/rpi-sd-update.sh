@@ -2,6 +2,8 @@
 
 SD_DEVICE=/dev/mmcblk0
 PART_DEVICE=/dev/mmcblk0p1
+GREEN_LED=/sys/class/leds/ACT/trigger
+RED_LED=/sys/class/leds/PWR/trigger
 
 expected_exit()
 {
@@ -10,12 +12,12 @@ expected_exit()
     if [ "$code" -eq 0 ]
     then
         # indicate success: green led on, red led off
-        echo default-on > /sys/class/leds/led0/trigger
-        echo none > /sys/class/leds/led1/trigger
+        echo default-on > $GREEN_LED
+        echo none > $RED_LED
     else
         # indicate failure: green led off, red led blinking
-        echo none > /sys/class/leds/led0/trigger
-        echo timer > /sys/class/leds/led1/trigger
+        echo none > $GREEN_LED
+        echo timer > $RED_LED
     fi
     exit $code
 }
@@ -26,8 +28,8 @@ unexpected_exit()
     echo "Unexpected exit!" >&2
     walt-log-echo rpi-sd-update "Completed -- Unexpected exit!"
     # indicate unexpected exit: green led off, red led blinking with heartbeat style
-    echo none > /sys/class/leds/led0/trigger
-    echo heartbeat > /sys/class/leds/led1/trigger
+    echo none > $GREEN_LED
+    echo heartbeat > $RED_LED
     exit
 }
 
@@ -78,7 +80,7 @@ then
 fi
 
 # Set green LED to 'timer'
-echo timer > /sys/class/leds/led0/trigger
+echo timer > $GREEN_LED
 
 # Mount SD card read-only
 mountpoint /media/sdcard >/dev/null || mount -o ro /media/sdcard
