@@ -44,6 +44,7 @@ fdt get value given_bootargs /chosen bootargs
 # * root=, rootfstype=, rootwait are not set correctly for walt context
 # * kgdboc="..."  may make the kernel bootup fail (and hang!) in some cases
 #   (support for kgdb may just be missing in the kernel)
+setenv excluded_bootargs "root kgdboc"
 setenv preserved_bootargs ""
 setenv preserve_dtb 0
 
@@ -62,22 +63,17 @@ do
 			arg_continue=0
 		fi
 	fi
-	if test "$arg_continue" = 1
-	then
-		setexpr rootprefix sub "(root).*" "root" "${arg}"
-		if test "$rootprefix" = "root"
+	for excluded in "${excluded_bootargs}"
+	do
+		if test "$arg_continue" = 1
 		then
-			arg_continue=0	# ignore this argument
+			setexpr rootprefix sub "(${excluded}).*" "${excluded}" "${arg}"
+			if test "$rootprefix" = "${excluded}"
+			then
+				arg_continue=0	# ignore this argument
+			fi
 		fi
-	fi
-	if test "$arg_continue" = 1
-	then
-		setexpr kgdbprefix sub "(kgdboc).*" "kgdboc" "${arg}"
-		if test "$kgdbprefix" = "kgdboc"
-		then
-			arg_continue=0  # ignore this argument
-		fi
-	fi
+	done
 	if test "$arg_continue" = 1
 	then
 		# OK, we can keep this bootarg given by the firmware

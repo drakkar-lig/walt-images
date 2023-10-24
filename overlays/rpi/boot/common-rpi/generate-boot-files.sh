@@ -123,9 +123,9 @@ EOF
     # generate symlinks for secondary models
     for model in $(cat $tmpdir/$series_model)
     do
-        if [ "$model" != "$series_model" ] 
+        if [ "$model" != "$series_model" ]
         then
-            ln -s ../$series_model/fit.uboot /boot/$model/
+            ln -sf ../$series_model/fit.uboot /boot/$model/
         fi
     done
 done
