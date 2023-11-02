@@ -75,7 +75,7 @@ RUN rm -f System.map-lts config-lts vmlinuz-lts initramfs-lts
 # create initramfs
 COPY base/pc-x86-64/openwrt/initrd_skeleton /root/initrd
 RUN mkdir -p /root/initrd/sbin
-RUN mv /root/rootfs/sbin/mount.nbfs /root/initrd/sbin/  # mount.nbfs is only needed in the initrd
+RUN mv /root/rootfs/usr/sbin/mount.nbfs /root/initrd/sbin/  # mount.nbfs is only needed in the initrd
 COPY base/pc-x86-64/openwrt/create_initramfs.sh /root
 RUN /root/create_initramfs.sh
 

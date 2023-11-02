@@ -3,11 +3,12 @@
 set -e
 
 PACKAGES="init ssh openssh-server usbutils texinfo \
-    locales netcat lldpd vim python3-pip kexec-tools \
+    locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools \
     firmware-realtek firmware-bnx2 firmware-bnx2x firmware-qlogic \
-    firmware-atheros firmware-brcm80211 firmware-misc-nonfree \
+    firmware-atheros firmware-brcm80211 firmware-misc-nonfree wget \
     htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
     lockfile-progs avahi-daemon libnss-mdns cron ptpd initramfs-tools nfs-common"
+EXTRACT_IKCONFIG_URL="https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig"
 
 install_packages() {
     apt-get update
@@ -55,8 +56,15 @@ esac
 
 case "$image_kind" in
     "pc-x86-32"|"pc-x86-64")
-        # add non-free apt section
-        sed -i -e 's/main/main non-free/g' /etc/apt/sources.list
+        if [ -f /etc/apt/sources.list ]
+        then
+                # add non-free apt section
+                sed -i -e 's/main/main non-free/g' /etc/apt/sources.list
+        else
+                # new source format, >= bookworm, add non-free-firmware section
+                sed -i -e 's/main/main non-free-firmware/g' \
+                            /etc/apt/sources.list.d/debian.sources
+        fi
         ;;
 esac
 
@@ -70,19 +78,39 @@ install_packages $PACKAGES
 mv /etc/default/ptpd.new /etc/default/ptpd
 
 # Install walt python packages
-pip3 install /root/*.whl
-walt-node-setup
+python3 -m venv /opt/walt-node
+/opt/walt-node/bin/pip install --upgrade pip
+/opt/walt-node/bin/pip install /root/*.whl
+/opt/walt-node/bin/walt-node-setup
 
 # Configure locale
 echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen
 echo 'fr_FR.UTF-8 UTF-8' >> /etc/locale.gen
 locale-gen
 
-# generate initramfs images
+# extract missing kernel config files (ik=in-kernel)
+# and generate initramfs images
+cd /tmp
+wget $EXTRACT_IKCONFIG_URL
+if [ "$image_kind" = "rpi" ]
+then
+    sh /tmp/extract-ikconfig /boot/qemu-arm-32/kernel \
+        > "/boot/config-$(cat /boot/qemu-arm-32/kernel.release)"
+    sh /tmp/extract-ikconfig /boot/qemu-arm-64/kernel \
+        > "/boot/config-$(cat /boot/qemu-arm-64/kernel.release)"
+fi
+
 for kversion in $(ls /lib/modules)
 do
+    if [ ! -f "/boot/config-$kversion" ]
+    then
+        sh /tmp/extract-ikconfig \
+            "/lib/modules/$kversion/kernel/kernel/configs.ko"*  \
+            > "/boot/config-$kversion"
+    fi
     update-initramfs -u -k $kversion
 done
+rm /tmp/extract-ikconfig
 
 # link or create u-boot image in relevant dirs
 if [ "$image_kind" = "rpi" ]

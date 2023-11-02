@@ -14,7 +14,7 @@ os_version="$2"
 
 populate_rootfs_debian() {
     # populate target os filesystem
-    debootstrap --no-merged-usr --no-check-gpg --arch=armhf --foreign \
+    debootstrap --no-check-gpg --arch=armhf --foreign \
         --variant=minbase \
         --include raspbian-archive-keyring,apt-utils \
         $os_version "/rpi_fs" $RPIOS_DEBIAN_MIRROR_URL_FAST

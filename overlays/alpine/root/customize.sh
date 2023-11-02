@@ -12,7 +12,7 @@ HAS_KEXEC=0
 
 case "$image_kind" in
     "rpi")
-        PACKAGES="linux-rpi linux-rpi2 uboot-tools dtc \
+        PACKAGES="linux-rpi linux-rpi2 u-boot-tools dtc \
                   raspberrypi-bootloader \
                   raspberrypi  $PACKAGES"
         ;;
