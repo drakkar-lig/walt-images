@@ -1,8 +1,11 @@
 #!/bin/sh
+GREEN_LED=/sys/class/leds/ACT/trigger
+#RED_LED=/sys/class/leds/PWR/trigger
+
 if [ "$1" = "1" ]
 then
     led_module="heartbeat"
 else
     led_module="mmc0"
 fi
-echo $led_module > /sys/class/leds/led0/trigger
+echo $led_module > $GREEN_LED
