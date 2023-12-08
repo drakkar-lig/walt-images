@@ -63,6 +63,8 @@ ssh-keygen -A
 if [ "$HAS_KEXEC" != 0 ]
 then
     ln -s $(which walt-ipxe-kexec-reboot) /bin/walt-reboot
+    ln -s $(which walt-ipxe-kexec-reboot) /bin/walt-network-reboot
+    ln -s $(which walt-ipxe-kexec-reboot) /bin/walt-hybrid-reboot
 fi
 
 # update initramfs with ability to use nfs & nbfs
