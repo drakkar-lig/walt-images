@@ -161,12 +161,19 @@ systemctl disable systemd-timesyncd
 systemctl disable apt-daily.timer
 systemctl disable apt-daily-upgrade.timer
 systemctl disable exim4.service
-systemctl disable kexec-load.service
-systemctl disable kexec.service
 if [ "$image_kind" = "rpi" ]
 then
     systemctl disable rpi-eeprom-update
 fi
+
+# tweak system for kexec:
+# * disable kexec-load.service, we don't want to load the
+#   same kernel automatically because image may have changed
+#   when we reboot the node
+# * we keep kexec.service activated, which will be triggered
+#   at the end of the OS shutdown if a kexec kernel was
+#   previously loaded (i.e, by walt-ipxe-kexec-reboot)
+systemctl disable kexec-load.service
 
 if [ "$image_kind" = "rpi" ]
 then
