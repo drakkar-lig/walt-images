@@ -74,6 +74,25 @@ FEATURED_IMAGE_SHORT_DESC_TEMPLATES = {
         'long': """\
 This image allows to automatically update the network bootloader and firmware files
 stored on the SD card of Raspberry Pi nodes."""
+    },
+    'rpi-serial-monitor': {
+        'short': "WALT image for monitoring the serial line of another board",
+        'long': """\
+This image allows to use a Raspberry Pi node to log or view in realtime
+the serial line output of another Raspberry Pi board. (Serial line pins
+of those two boards must be bridged together.)"""
+    },
+    'pc-x86-64-k3s-server': {
+        'short': "WALT image for turning a pc-x86-64 node into a Kubernetes server",
+        'long': """\
+This image allows to turn pc-x86-64 node into a single-node Kubernetes (k3s) cluster.
+(See "pc-x86-64-k3s-agent" for adding more k3s nodes to this cluster.)"""
+    },
+    'pc-x86-64-k3s-agent': {
+        'short': "WALT image for turning a pc-x86-64 node into a Kubernetes node",
+        'long': """\
+This image allows to add a k3s node to a cluster.
+(See also "pc-x86-64-k3s-server".)"""
     }
 }
 
