@@ -28,6 +28,9 @@ else:
 
 
     # docker build
+    print(f'nice docker build {build_args} \
+            -f base/{model_type}/{os_type}/Dockerfile \
+            --tag=waltplatform/{model_type}-{os_type}:latest .')
     subprocess.run(f'nice docker build {build_args} \
             -f base/{model_type}/{os_type}/Dockerfile \
             --tag=waltplatform/{model_type}-{os_type}:latest .',
