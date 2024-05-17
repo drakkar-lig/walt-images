@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# You can edit this script to automate actions
+# after the node reboots.
+
+# You can for instance uncomment some of the following service start
+# commands to autostart services on bootup.
+
+# main service
+systemctl start str2str_tcp.service
+
+# ntrip A service
+#systemctl start str2str_ntrip_A.service
+
+# ntrip B service
+#systemctl start str2str_ntrip_B.service
+
+# ntrip caster service
+#systemctl start str2str_local_ntrip_caster.service
+
+# rtcm tcp service
+#systemctl start str2str_rtcm_svr.service
+
+# rtcm serial service
+#systemctl start str2str_rtcm_serial.service
+
+# file service
+#systemctl start str2str_file.service
+

@@ -1,0 +1,30 @@
+#!/bin/bash
+
+# settings.conf and the collected data should persist accross reboots
+if [ ! -d /persist/rpi-rtk-base ]
+then
+    # since /persist/rpi-rtk-base is missing,
+    # we know this is the first boot, so configure the GPS device
+    cd /root
+    ./install.sh --user root --detect-gnss
+    ./install.sh --user root --configure-gnss
+    # update settings.conf to direct data to /persist
+    sed -i -e "s/^datadir=.*$/datadir=\/persist\/rpi-rtk-base\/data/" \
+        rtkbase/settings.conf
+    # create /persist/rpi-rtk-base and data subdir
+    mkdir -p /persist/rpi-rtk-base/data
+    # move settings to /persist and prepare bind mount
+    mv /root/rtkbase/settings.conf /persist/rpi-rtk-base
+    touch /root/rtkbase/settings.conf
+    # prepare a default user on-bootup file to be run
+    mv /usr/local/bin/rtk-base-user-on-bootup /persist/rpi-rtk-base/on-bootup
+fi
+
+# bind-mount settings.conf which was computed on first boot
+mount -o bind /persist/rpi-rtk-base/settings.conf /root/rtkbase/settings.conf
+
+# run /persist/rpi-rtk-base/on-bootup unless the user removed it
+if [ -x /persist/rpi-rtk-base/on-bootup ]
+then
+    /persist/rpi-rtk-base/on-bootup
+fi

@@ -93,6 +93,12 @@ This image allows to turn pc-x86-64 node into a single-node Kubernetes (k3s) clu
         'long': """\
 This image allows to add a k3s node to a cluster.
 (See also "pc-x86-64-k3s-server".)"""
+    },
+    'rpi-rtk-base': {
+        'short': "WALT image with RTKBase GPS software for raspberry pi boards",
+        'long': """\
+This walt Raspberry Pi image embeds RTKBase frontend and scripts for
+managing U-Blox ZED-F9P Gnss Receiver."""
     }
 }
 
