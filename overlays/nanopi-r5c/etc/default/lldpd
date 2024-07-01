@@ -1,0 +1,6 @@
+# Uncomment to start SNMP subagent and enable CDP, SONMP and EDP protocol
+#DAEMON_ARGS="-x -c -s -e"
+
+# WalT: let lldpd report chassis ID (i.e, mac address) of the "wan" interface,
+# because it is the interface the nanopi uses to boot as a walt node.
+DAEMON_ARGS="-C eth1"

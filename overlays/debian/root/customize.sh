@@ -3,11 +3,11 @@
 set -e
 
 PACKAGES="init ssh openssh-server usbutils texinfo \
-    locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools \
-    firmware-realtek firmware-bnx2 firmware-bnx2x firmware-qlogic \
-    firmware-atheros firmware-brcm80211 firmware-misc-nonfree wget \
+    locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools wget \
     htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
     lockfile-progs avahi-daemon libnss-mdns cron ptpd initramfs-tools nfs-common"
+PACKAGES_FIRMWARE="firmware-realtek firmware-bnx2 firmware-bnx2x firmware-qlogic \
+    firmware-atheros firmware-brcm80211 firmware-misc-nonfree"
 EXTRACT_IKCONFIG_URL="https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig"
 
 install_packages() {
@@ -40,17 +40,26 @@ then
 
     # register Raspberry Pi Archive Signing Key
     apt-key add - < /root/82B129927FA3303E.pub
+elif [ "$image_kind" = "nanopi-r5c" ]
+then
+    /debootstrap/debootstrap --second-stage
 fi
 
 case "$image_kind" in
     "rpi")
-        PACKAGES="u-boot-tools libraspberrypi-bin rpi-eeprom raspberrypi-kernel $PACKAGES"
+        PACKAGES="u-boot-tools libraspberrypi-bin rpi-eeprom raspberrypi-kernel \
+                  $PACKAGES $PACKAGES_FIRMWARE"
+        ;;
+    "nanopi-r5c")
+        # note: firmware added by Dockerfile
+        PACKAGES="u-boot-tools linux-image-arm64 \
+                  rfkill wireless-regdb wpasupplicant $PACKAGES"
         ;;
     "pc-x86-32")
-        PACKAGES="linux-image-686-pae $PACKAGES"
+        PACKAGES="linux-image-686-pae $PACKAGES $PACKAGES_FIRMWARE"
         ;;
     "pc-x86-64")
-        PACKAGES="linux-image-amd64 $PACKAGES"
+        PACKAGES="linux-image-amd64 $PACKAGES $PACKAGES_FIRMWARE"
         ;;
 esac
 
@@ -68,14 +77,16 @@ case "$image_kind" in
         ;;
 esac
 
-# this file should be temporarily diverted for the ptpd package installation to pass
+# those files should be temporarily diverted for the package installation to pass
 mv /etc/default/ptpd /etc/default/ptpd.new
+[ -e "/etc/default/lldpd" ] && mv /etc/default/lldpd /etc/default/lldpd.new
 
 # Install packages
 install_packages $PACKAGES
 
-# restore diverted file
+# restore diverted files
 mv /etc/default/ptpd.new /etc/default/ptpd
+[ -e "/etc/default/lldpd.new" ] && mv /etc/default/lldpd.new /etc/default/lldpd
 
 # Install walt python packages
 python3 -m venv /opt/walt-node
@@ -148,6 +159,19 @@ then
     # let systemd use the watchdog with a 15s timeout
     sed -i -e 's/.*\(RuntimeWatchdogSec\).*/\1=15/g' \
            -e 's/.*\(RebootWatchdogSec\).*/\1=15/g' /etc/systemd/system.conf
+elif [ "$image_kind" = "nanopi-r5c" ]
+then
+    mkdir -p /boot/nanopi-r5c
+    cd /boot/nanopi-r5c
+    ln -s ../*.dtb dtb
+    mkimage -A arm64 -T ramdisk -C none -n uInitrd -d ../initrd.* initrd
+    ln -s ../vmlinuz* kernel
+    for proto in nfs nfs4 nbfs
+    do
+        mkimage -A arm -O linux -T script -C none -n "start-${proto}.uboot" \
+            -d start-uboot-${proto}.txt start-${proto}.uboot
+    done
+    ln -s start-nfs.uboot start.uboot   # default is nfs3
 fi
 
 # Allow passwordless root login on the serial console

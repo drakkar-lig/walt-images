@@ -26,6 +26,7 @@ LABELS_PER_BOARD_MODEL = {
     'pc-x86-32': { 'short': '32-bit PC machines', 'long': '32-bit PC machines' },
     'pc-x86-64': { 'short': '64-bit PC machines', 'long': '64-bit PC machines' },
     'coral-dev-board': { 'short': 'Coral Dev Boards', 'long': 'Google Coral Dev Boards' },
+    'nanopi-r5c': { 'short': 'NanoPi R5C', 'long': 'FriendlyElec NanoPi R5C' },
 }
 
 DEFAULT_OS_TYPE_PER_BOARD_MODEL = {
@@ -41,6 +42,7 @@ DEFAULT_OS_TYPE_PER_BOARD_MODEL = {
     'pc-x86-32': 'debian',
     'pc-x86-64': 'debian',
     'coral-dev-board': 'mendel',
+    'nanopi-r5c': 'debian',
 }
 
 OS_TYPE_LABEL = {

@@ -1,0 +1,22 @@
+
+# compute bootargs related to the network filesystem (nfs v3 here)
+setenv nfs_root "${serverip}:/var/lib/walt/nodes/${ipaddr}/fs"
+setenv nfs_opts "ro,vers=3,nolock,nocto,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000"
+setenv fs_bootargs "root=/dev/nfs boot=netroot rootfstype=netroot nfsroot=${nfs_root},${nfs_opts}"
+
+# compute the full list of kernel command line args
+setenv walt_init "/bin/walt-init"
+setenv ip_param "ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:${hostname}::off"
+setenv ip_conf "${ip_param} BOOTIF=01-${eth1addr}"
+setenv other_bootargs "init=${walt_init} panic=15 net.ifnames=0 biosdevname=0"
+setenv bootargs "$fs_bootargs $ip_conf $other_bootargs"
+
+# download kernel, initrd, dtb
+tftp ${kernel_addr_r} "kernel" || reset
+tftp ${ramdisk_addr_r} "initrd" || reset
+tftp ${fdt_addr_r} "dtb" || reset
+
+# boot
+echo 'Booting kernel...'
+echo booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r}
+booti ${kernel_addr_r} ${ramdisk_addr_r} ${fdt_addr_r} || reset
