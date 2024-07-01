@@ -68,6 +68,7 @@ WORKDIR /root/rootfs
 RUN rm etc/rc.d/S*network   # disable network service startup (breaks the running NFS)
 RUN mkdir -p etc/walt usr/bin run
 COPY overlays/generic overlays/openwrt overlays/ipxe \
+     overlays/spec-ipxe-nbfs \
      overlays/pc overlays/pc-x86-64 /root/rootfs/
 WORKDIR /root/rootfs/boot
 RUN rm -f System.map-lts config-lts vmlinuz-lts initramfs-lts

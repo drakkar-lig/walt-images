@@ -60,6 +60,7 @@ RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-64/
 
 # add various overlays
 COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
+     overlays/spec-ipxe-nbfs \
      overlays/rpi overlays/rpi-${OS_TYPE} /rpi_fs/
 
 # add a copy of SD-card boot files
