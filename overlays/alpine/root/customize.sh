@@ -1,7 +1,7 @@
 #!/bin/sh
 
 PACKAGES="alpine-base openrc nfs-utils openssh-server \
-    netcat-openbsd lldpd vim py3-pip linux-firmware htop udev \
+    netcat-openbsd lldpd vim linux-firmware htop udev \
     e2fsprogs"
 
 image_kind="$1"
@@ -52,6 +52,8 @@ sed -i -e 's/^#ttyS0\(.*\)ttyS0\(.*\)$/console\1console\2/' /etc/inittab
 ssh-keygen -A
 
 # TODO: Install walt python packages
+# add overlay walt-node
+# apk add py3-pip
 # pip3 install /root/*.whl
 # This command works but is not useful for now:
 # - kexec feature is not activated in alpine kernels

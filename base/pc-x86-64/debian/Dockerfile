@@ -14,7 +14,7 @@ LABEL walt.server.minversion=5
 
 # prepare and run customization
 COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
-     overlays/spec-ipxe-nbfs \
+     overlays/spec-ipxe-nbfs overlays/walt-node \
      overlays/pc overlays/pc-${OS_TYPE} overlays/pc-x86-64 /
 RUN /root/customize.sh pc-x86-64
 
