@@ -7,7 +7,7 @@ RUN wget https://raw.githubusercontent.com/Stefal/rtkbase/master/tools/install.s
 RUN ./install.sh --user root --dependencies
 RUN ./install.sh --user root --rtkbase-release
 # according to the source code of install.sh --rtklib:
-RUN cd rtkbase/tools/bin/rtklib_b34i/armv7l && cp convbin rtkrcv str2str /usr/local/bin
+RUN cd rtkbase/tools/bin/rtklib_*/armv7l && cp convbin rtkrcv str2str /usr/local/bin
 RUN ./install.sh --user root --unit-files
 RUN ./install.sh --user root --gpsd-chrony
 # prepare a script which will be called by an ExecStartPre directive
