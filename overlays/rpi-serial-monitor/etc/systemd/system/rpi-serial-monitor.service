@@ -1,6 +1,7 @@
 [Unit]
 Description=Service for monitoring the serial line of a paired board
 After=multi-user.target
+ConditionVirtualization=false
 
 [Service]
 ExecStart=/bin/rpi-serial-monitor.sh

@@ -1,5 +1,6 @@
 FROM waltplatform/rpi-debian:latest
 
+COPY overlays/featured /
 COPY overlays/rpi-serial-monitor /
 # remove console=.* kernel arguments
 WORKDIR /boot/common-rpi
@@ -11,3 +12,5 @@ RUN sed -i -e \
 RUN systemctl enable rpi-serial-monitor && \
     apt update && \
     apt install -y screen minicom
+# allow apt install to start services (on node, or in walt image shell)
+RUN rm /usr/sbin/policy-rc.d

@@ -1,0 +1,17 @@
+#!/bin/sh
+if [ $$ != 1 ]
+then
+    echo "This script must be called as part of 'walt image shell' only."
+    exit 1
+fi
+
+# allow images based on this one to provide their own customization
+# at /bin/walt-image-shell-start.d/ and /bin/walt-image-shell-shutdown.d/
+for script in $(ls /bin/walt-image-shell-start.d/* 2>/dev/null)
+do
+    script_path="/bin/walt-image-shell-start.d/$script"
+    [ -x "$script_path" ] && "$script_path"
+done
+
+# start systemd
+exec /sbin/init

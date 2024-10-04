@@ -1,0 +1,2 @@
+# We create this directory in advance otherwise
+# systemd will do it the first time "walt image shell" is run.

@@ -189,6 +189,10 @@ if [ "$image_kind" = "rpi" ]
 then
     systemctl disable rpi-eeprom-update
 fi
+for timer_unit in $(ls /etc/systemd/system/timers.target.wants)
+do
+    systemctl disable "$timer_unit"
+done
 
 # tweak system for kexec:
 # * disable kexec-load.service, we don't want to load the
@@ -204,6 +208,12 @@ then
     # restore official apt repositories
     mv /etc/apt/sources.list.official /etc/apt/sources.list
 fi
+
+# File policy-rc.d is available by default in debian images on docker hub
+# to prevent apt to start services immediately after they are installed.
+# Since in "walt image shell" we now start systemd, we can now restore
+# this default behavior.
+rm -f /usr/sbin/policy-rc.d
 
 # cleanup
 rm -rf /var/lib/apt/lists/*

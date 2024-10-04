@@ -1,5 +1,6 @@
 FROM waltplatform/rpi-debian:bookworm
 
+COPY overlays/featured /
 WORKDIR /root
 # see installation steps at https://github.com/Stefal/rtkbase
 RUN apt update && apt install -y sudo wget lsb-release
@@ -24,3 +25,10 @@ RUN chmod +x /usr/local/bin/rtk-base-on-bootup \
              /usr/local/bin/rtk-base-user-on-bootup && \
     sed -i "/^ExecStart=.*/i ExecStartPre=\/usr\/local\/bin\/rtk-base-on-bootup" \
     /etc/systemd/system/rtkbase_web.service
+# disable those services when virtualization is detected (e.g. in walt image shell)
+RUN sed -i '/^Description=.*/i ConditionVirtualization=false' \
+    /etc/systemd/system/rtkbase_web.service && \
+    sed -i '/^Description=.*/i ConditionVirtualization=false' \
+    /etc/systemd/system/gpsd.service
+# allow apt install to start services (on node, or in walt image shell)
+RUN rm /usr/sbin/policy-rc.d

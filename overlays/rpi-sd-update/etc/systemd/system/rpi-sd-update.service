@@ -1,6 +1,7 @@
 [Unit]
 Description=Raspberry Pi SD card files auto updating
 After=multi-user.target
+ConditionVirtualization=false
 
 [Service]
 ExecStart=/bin/rpi-sd-update.sh
