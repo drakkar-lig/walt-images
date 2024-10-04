@@ -17,7 +17,7 @@ LABEL walt.server.minversion=5
 COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
      overlays/spec-ipxe-nbfs \
      overlays/pc overlays/pc-${OS_TYPE} overlays/pc-x86-32 /
-RUN /root/customize.sh pc-x86-32
+RUN nice /root/customize.sh pc-x86-32
 
 # set an entrypoint (handy when debugging)
 ENTRYPOINT /bin/sh

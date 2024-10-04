@@ -27,7 +27,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
 
 # get and run script to populate rootfs
 COPY base/rpi/populate_rootfs.sh /root
-RUN /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
+RUN nice /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
 
 # download and build a linux kernel compatible with qemu arm 'virt' machine
 WORKDIR /root
@@ -40,7 +40,7 @@ WORKDIR /root/linux
 ENV ARCH=arm
 ENV CROSS_COMPILE=arm-linux-gnueabi-
 ADD base/rpi/linux-arm32.config .config
-RUN make olddefconfig && make -j $(nproc)
+RUN make olddefconfig && nice make -j $(nproc)
 RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-32 && \
     cp arch/arm/boot/zImage /rpi_fs/boot/qemu-arm-32/kernel
@@ -52,7 +52,7 @@ RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-32/
 ENV ARCH=arm64
 ENV CROSS_COMPILE=aarch64-linux-gnu-
 ADD base/rpi/linux-arm64.config .config
-RUN make olddefconfig && make -j $(nproc)
+RUN make olddefconfig && nice make -j $(nproc)
 RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-64 && \
     cp arch/arm64/boot/Image /rpi_fs/boot/qemu-arm-64/kernel
@@ -91,7 +91,7 @@ LABEL walt.server.minversion=5
 
 # prepare and run customization
 COPY --from=builder /rpi_fs /
-RUN /root/customize.sh rpi ${KERNEL_VERSION}
+RUN nice /root/customize.sh rpi ${KERNEL_VERSION}
 
 # set an entrypoint (handy when debugging)
 ENTRYPOINT /bin/sh

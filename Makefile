@@ -1,13 +1,20 @@
 
 SHELL := /bin/bash		# needed for "read -s" (silent read for passwords)
 
-all: build
+all:
+	nice make build-featured
+
+parallel:
+	nice make -j $(shell nproc) build-featured
 
 build.%:
 	python3 build.py $*
 
-build:
-	$(MAKE) $(shell ./get_make_steps.sh build)
+build-featured: build-base
+	$(MAKE) $(shell ./get_make_steps.sh build featured)
+
+build-base:
+	$(MAKE) $(shell ./get_make_steps.sh build base)
 
 publish.%:
 	python3 publish.py $*
