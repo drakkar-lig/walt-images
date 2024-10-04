@@ -47,8 +47,8 @@ fi
 
 case "$image_kind" in
     "rpi")
-        PACKAGES="u-boot-tools libraspberrypi-bin rpi-eeprom raspberrypi-kernel \
-                  $PACKAGES $PACKAGES_FIRMWARE"
+        PACKAGES="u-boot-tools raspi-utils rpi-eeprom raspberrypi-kernel \
+                  raspberrypi-bootloader $PACKAGES $PACKAGES_FIRMWARE"
         ;;
     "nanopi-r5c")
         # note: firmware added by Dockerfile
