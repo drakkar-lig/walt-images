@@ -156,6 +156,18 @@ then
     # generate other boot files
     /boot/common-rpi/generate-boot-files.sh
 
+    # The file tree at /boot is very complex, with files coming from different
+    # sources ([repo_dir]/overlays/<overlay>, 'raspberrypi-bootloader' package,
+    # file copies from 'waltplatform/rpi-boot-builder' image, files generated
+    # by this script) and many cross-references using symlinks. The existence
+    # of broken symlinks is a good sign of an issue, so let's check that.
+    if [ $(find /boot -xtype l | wc -l) -ne 0 ]
+    then
+        echo "Issue detected in /boot. Found the following broken symlinks:"
+        find /boot -xtype l
+        exit 1
+    fi
+
     # let systemd use the watchdog with a 15s timeout
     sed -i -e 's/.*\(RuntimeWatchdogSec\).*/\1=15/g' \
            -e 's/.*\(RebootWatchdogSec\).*/\1=15/g' /etc/systemd/system.conf
