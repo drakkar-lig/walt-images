@@ -13,7 +13,7 @@ OS_VERSIONS = {
 }
 
 LABELS_PER_BOARD_MODEL = {
-    'rpi': { 'short': 'Rpi boards', 'long': 'various Raspberry Pi models' },
+    'rpi32': { 'short': '32bit Rpi boards', 'long': 'Raspberry Pi models supporting 32bit mode' },
     'rpi-b': { 'short': 'Rpi B boards', 'long': 'Raspberry Pi B boards' },
     'rpi-b-plus': { 'short': 'Rpi B+ boards', 'long': 'Raspberry Pi B+ boards' },
     'rpi-2-b': { 'short': 'Rpi 2B boards', 'long': 'Raspberry Pi 2B boards' },

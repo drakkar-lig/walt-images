@@ -1,7 +1,7 @@
-FROM waltplatform/rpi-debian:latest
+FROM waltplatform/rpi32-debian:latest
 
 COPY overlays/featured /
-COPY overlays/rpi-sd-update /
+COPY overlays/rpi32-sd-update /
 COPY --from=waltplatform/rpi-boot-builder \
      /opt/boot_files /opt/walt/rpi-sd
 RUN systemctl enable rpi-sd-update && \

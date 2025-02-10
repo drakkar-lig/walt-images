@@ -22,7 +22,7 @@ else:
     build_args=f"--build-arg OS_TYPE={os_type} --build-arg OS_VERSION={os_version}"
 
     # rpi model is more complex
-    if model_type == "rpi":
+    if model_type == "rpi32":
         build_args += f" --build-arg KERNEL_ARCHIVE={env.KERNEL_ARCHIVE} \
                          --build-arg KERNEL_VERSION={env.KERNEL_VERSION}"
 

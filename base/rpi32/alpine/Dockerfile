@@ -26,7 +26,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     apt-get clean
 
 # get and run script to populate rootfs
-COPY base/rpi/populate_rootfs.sh /root
+COPY base/rpi32/populate_rootfs.sh /root
 RUN nice /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
 
 # download and build a linux kernel compatible with qemu arm 'virt' machine
@@ -39,7 +39,7 @@ WORKDIR /root/linux
 # 32-bit version
 ENV ARCH=arm
 ENV CROSS_COMPILE=arm-linux-gnueabi-
-ADD base/rpi/linux-arm32.config .config
+ADD base/rpi32/linux-arm32.config .config
 RUN make olddefconfig && nice make -j $(nproc)
 RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-32 && \
@@ -51,7 +51,7 @@ RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-32/
 # thus we deploy a plain Image.
 ENV ARCH=arm64
 ENV CROSS_COMPILE=aarch64-linux-gnu-
-ADD base/rpi/linux-arm64.config .config
+ADD base/rpi32/linux-arm64.config .config
 RUN make olddefconfig && nice make -j $(nproc)
 RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
 RUN mkdir -p /rpi_fs/boot/qemu-arm-64 && \
@@ -60,8 +60,8 @@ RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-64/
 
 # add various overlays
 COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
-     overlays/spec-ipxe-nbfs overlays/walt-node \
-     overlays/rpi overlays/rpi-${OS_TYPE} /rpi_fs/
+     overlays/spec-ipxe-nbfs \
+     overlays/rpi32 overlays/rpi32-${OS_TYPE} /rpi_fs/
 
 # add a copy of SD-card boot files
 # (needed to allow rpi3+ and later to boot without a SD card)
@@ -80,21 +80,26 @@ RUN sed -i -e "s/$/ u-boot:preserve_dtb/" /rpi_fs/boot/common-rpi/cmdline.txt
 
 # Target image
 # ------------
-FROM --platform=linux/arm/v6 scratch
+# we consider the official arm32v6 alpine image is suitable
+# for raspberry pi boards
+FROM --platform=linux/arm/v6 arm32v6/alpine:${OS_VERSION}
 ARG KERNEL_VERSION
 
 # specify which node models this image can handle
-LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b,rpi-400,qemu-arm-32,qemu-arm-64
+# unfortunately this official alpine image provides no kernel for the rpi4 board,
+# so model rpi-4-b is excluded from our models.
+# (linux-rpi2 packages used for models 2 & 3 works but we miss the
+# broadcom genet ethernet driver.)
+# future work: if building from aarch64 version, we could make an image
+# for models rpi3b, rpi3b+ and rpi4b & rpi400.
+LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,qemu-arm-32,qemu-arm-64
 
 # specify min walt server version needed
 LABEL walt.server.minversion=5
 
 # prepare and run customization
 COPY --from=builder /rpi_fs /
-RUN nice /root/customize.sh rpi ${KERNEL_VERSION}
+RUN nice /root/customize.sh rpi32 ${KERNEL_VERSION}
 
 # set an entrypoint (handy when debugging)
 ENTRYPOINT /bin/sh
-
-# debian is the defaut image for various rpi models
-LABEL walt.image.preferred-name=rpi-default:latest

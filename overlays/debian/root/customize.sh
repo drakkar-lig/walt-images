@@ -28,7 +28,7 @@ get_kernel_version_from_extension() {
 image_kind="$1"
 kernel_version="$2"
 
-if [ "$image_kind" = "rpi" ]
+if [ "$image_kind" = "rpi32" ]
 then
     # resume deboostrap process
     mv /bin/mount /bin/mount.saved
@@ -47,7 +47,7 @@ then
 fi
 
 case "$image_kind" in
-    "rpi")
+    "rpi32")
         PACKAGES="u-boot-tools raspi-utils rpi-eeprom raspberrypi-kernel \
                   raspberrypi-bootloader $PACKAGES $PACKAGES_FIRMWARE"
         ;;
@@ -104,7 +104,7 @@ locale-gen
 # and generate initramfs images
 cd /tmp
 wget $EXTRACT_IKCONFIG_URL
-if [ "$image_kind" = "rpi" ]
+if [ "$image_kind" = "rpi32" ]
 then
     sh /tmp/extract-ikconfig /boot/qemu-arm-32/kernel \
         > "/boot/config-$(cat /boot/qemu-arm-32/kernel.release)"
@@ -125,7 +125,7 @@ done
 rm /tmp/extract-ikconfig
 
 # link or create u-boot image in relevant dirs
-if [ "$image_kind" = "rpi" ]
+if [ "$image_kind" = "rpi32" ]
 then
     cd /boot
     # link arm32 and arm64 initrd files
@@ -198,7 +198,7 @@ systemctl disable systemd-timesyncd
 systemctl disable apt-daily.timer
 systemctl disable apt-daily-upgrade.timer
 systemctl disable exim4.service
-if [ "$image_kind" = "rpi" ]
+if [ "$image_kind" = "rpi32" ]
 then
     systemctl disable rpi-eeprom-update
 fi
@@ -216,7 +216,7 @@ done
 #   previously loaded (i.e, by walt-ipxe-kexec-reboot)
 systemctl disable kexec-load.service
 
-if [ "$image_kind" = "rpi" ]
+if [ "$image_kind" = "rpi32" ]
 then
     # restore official apt repositories
     mv /etc/apt/sources.list.official /etc/apt/sources.list

@@ -1,7 +1,7 @@
-FROM waltplatform/rpi-debian:latest
+FROM waltplatform/rpi32-debian:latest
 
 COPY overlays/featured /
-COPY overlays/rpi-serial-monitor /
+COPY overlays/rpi32-serial-monitor /
 # remove console=.* kernel arguments
 WORKDIR /boot/common-rpi
 RUN sed -i -e \

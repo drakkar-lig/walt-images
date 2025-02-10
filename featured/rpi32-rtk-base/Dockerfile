@@ -1,4 +1,4 @@
-FROM waltplatform/rpi-debian:bookworm
+FROM waltplatform/rpi32-debian:bookworm
 
 COPY overlays/featured /
 WORKDIR /root
@@ -16,11 +16,11 @@ RUN ./install.sh --user root --gpsd-chrony
 # * it will ensure settings and data are preserved accross reboots;
 # * on first boot, this script will also configure the GPS receiver
 #   (a part of the setup we cannot do right now when building the image)
-# * it will run /persist/rpi-rtk-base/on-bootup allowing the user
+# * it will run /persist/rpi32-rtk-base/on-bootup allowing the user
 #   to automate other actions on bootup. The default version of this script
 #   is given by "rtk-base-user-on-bootup".
-ADD featured/rpi-rtk-base/rtk-base-on-bootup /usr/local/bin/
-ADD featured/rpi-rtk-base/rtk-base-user-on-bootup /usr/local/bin/
+ADD featured/rpi32-rtk-base/rtk-base-on-bootup /usr/local/bin/
+ADD featured/rpi32-rtk-base/rtk-base-user-on-bootup /usr/local/bin/
 RUN chmod +x /usr/local/bin/rtk-base-on-bootup \
              /usr/local/bin/rtk-base-user-on-bootup && \
     sed -i "/^ExecStart=.*/i ExecStartPre=\/usr\/local\/bin\/rtk-base-on-bootup" \

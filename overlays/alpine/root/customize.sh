@@ -11,7 +11,7 @@ image_kind="$1"
 HAS_KEXEC=0
 
 case "$image_kind" in
-    "rpi")
+    "rpi32")
         PACKAGES="linux-rpi linux-rpi2 u-boot-tools dtc \
                   raspberrypi-bootloader \
                   raspberrypi  $PACKAGES"
@@ -82,7 +82,7 @@ do
 done
 chmod a+r /boot/initramfs-*     # for TFTP access
 
-if [ "$image_kind" = "rpi" ]
+if [ "$image_kind" = "rpi32" ]
 then
     # create a u-boot image for initrd
     for f in initramfs-rpi initramfs-rpi2
