@@ -13,13 +13,15 @@ OS_VERSIONS = {
 }
 
 LABELS_PER_BOARD_MODEL = {
-    'rpi32': { 'short': '32bit Rpi boards', 'long': 'Raspberry Pi models supporting 32bit mode' },
+    'rpi32': { 'short': 'Rpi boards <= 4B', 'long': 'Raspberry Pi models supporting 32bit mode' },
+    'rpi64': { 'short': 'Rpi boards >= 3B+', 'long': 'Recent Raspberry Pi models (>= 3B+)' },
     'rpi-b': { 'short': 'Rpi B boards', 'long': 'Raspberry Pi B boards' },
     'rpi-b-plus': { 'short': 'Rpi B+ boards', 'long': 'Raspberry Pi B+ boards' },
     'rpi-2-b': { 'short': 'Rpi 2B boards', 'long': 'Raspberry Pi 2B boards' },
     'rpi-3-b': { 'short': 'Rpi 3B boards', 'long': 'Raspberry Pi 3B boards' },
     'rpi-3-b-plus': { 'short': 'Rpi 3B+ boards', 'long': 'Raspberry Pi 3B+ boards' },
     'rpi-4-b': { 'short': 'Rpi 4B boards', 'long': 'Raspberry Pi 4B boards' },
+    'rpi-5-b': { 'short': 'Rpi 5B boards', 'long': 'Raspberry Pi 5B boards' },
     'rpi-400': { 'short': 'Rpi 400 keyboards', 'long': 'Raspberry Pi 400 keyboards' },
     'pc-x86-32': { 'short': '32-bit PC machines', 'long': '32-bit PC machines' },
     'pc-x86-64': { 'short': '64-bit PC machines', 'long': '64-bit PC machines' },
@@ -27,18 +29,19 @@ LABELS_PER_BOARD_MODEL = {
     'nanopi-r5c': { 'short': 'NanoPi R5C', 'long': 'FriendlyElec NanoPi R5C' },
 }
 
-DEFAULT_OS_TYPE_PER_BOARD_MODEL = {
-    'rpi-b': 'debian',
-    'rpi-b-plus': 'debian',
-    'rpi-2-b': 'debian',
-    'rpi-3-b': 'debian',
-    'rpi-3-b-plus': 'debian',
-    'rpi-4-b': 'debian',
-    'rpi-400': 'debian',
-    'pc-x86-32': 'debian',
-    'pc-x86-64': 'debian',
-    'coral-dev-board': 'mendel',
-    'nanopi-r5c': 'debian',
+DEFAULT_IMAGE_PER_BOARD_MODEL = {
+    'rpi-b': 'debian.rpi32',
+    'rpi-b-plus': 'debian.rpi32',
+    'rpi-2-b': 'debian.rpi32',
+    'rpi-3-b': 'debian.rpi32',
+    'rpi-3-b-plus': 'debian.rpi64',
+    'rpi-4-b': 'debian.rpi64',
+    'rpi-5-b': 'debian.rpi64',
+    'rpi-400': 'debian.rpi64',
+    'pc-x86-32': 'debian.pc-x86-32',
+    'pc-x86-64': 'debian.pc-x86-64',
+    'coral-dev-board': 'mendel.coral-dev-board',
+    'nanopi-r5c': 'debian.nanopi-r5c',
 }
 
 OS_TYPE_LABEL = {

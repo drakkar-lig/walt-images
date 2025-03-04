@@ -15,7 +15,7 @@ LABEL walt.server.minversion=5
 # prepare and run customization
 COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
      overlays/spec-ipxe-nbfs \
-     overlays/pc overlays/pc-${OS_TYPE} overlays/pc-x86-64 /
+     overlays/pc overlays/pc-${OS_TYPE} overlays/mount.nbfs.amd64 /
 RUN nice /root/customize.sh pc-x86-64
 
 # set an entrypoint (handy when debugging)

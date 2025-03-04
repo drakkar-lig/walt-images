@@ -30,7 +30,7 @@ get_kernel_version_from_extension() {
 image_kind="$1"
 kernel_version="$2"
 
-if [ "$image_kind" = "rpi32" ]
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     # resume deboostrap process
     mv /bin/mount /bin/mount.saved
@@ -40,9 +40,11 @@ then
 
     # update apt repositories for faster build
     mv /etc/apt/sources.list.fast /etc/apt/sources.list
-
-    # register Raspberry Pi Archive Signing Key
-    apt-key add - < /root/82B129927FA3303E.pub
+    if [ "$image_kind" = "rpi32" ]
+    then
+        # register Raspberry Pi Archive Signing Key
+        apt-key add - < /root/82B129927FA3303E.pub
+    fi
 elif [ "$image_kind" = "nanopi-r5c" ]
 then
     /debootstrap/debootstrap --second-stage
@@ -58,6 +60,14 @@ case "$image_kind" in
     "rpi32")
         PACKAGES="u-boot-tools raspi-utils rpi-eeprom raspberrypi-kernel \
                   raspberrypi-bootloader $PACKAGES $PACKAGES_FIRMWARE"
+        arch=arm
+        ;;
+    "rpi64")
+        PACKAGES="u-boot-tools raspi-utils raspi-firmware rpi-eeprom \
+                  linux-image-rpi-v8 linux-image-rpi-2712 \
+                  linux-headers-rpi-v8 linux-headers-rpi-2712 \
+                  $PACKAGES $PACKAGES_FIRMWARE"
+        arch=arm64
         ;;
     "nanopi-r5c")
         # note: firmware added by Dockerfile
@@ -109,6 +119,19 @@ echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen
 echo 'fr_FR.UTF-8 UTF-8' >> /etc/locale.gen
 locale-gen
 
+# rpi64 has configurable network filesystem protocol
+if [ "$image_kind" = "rpi64" ]
+then
+    for proto in nfs nfs4 nbfs
+    do
+        sed -e "s/$/ u-boot:fs_proto=${proto}/" \
+            < /boot/common-rpi/cmdline.txt \
+            > /boot/common-rpi/cmdline-${proto}.txt
+    done
+    # default is nfs
+    ln -sf cmdline-nfs.txt /boot/common-rpi/cmdline.txt
+fi
+
 # extract missing kernel config files (ik=in-kernel)
 # and generate initramfs images
 cd /tmp
@@ -127,7 +150,7 @@ rm /tmp/extract-ikconfig
 
 # link or create u-boot image in relevant dirs
 cd /boot
-if [ "$image_kind" = "rpi32" ]
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     # detect rpi model dirs by their dtb file
     for model_dtb in */dtb
@@ -143,7 +166,7 @@ then
         initrd_name="initrd.img-${full_kernel_version}"
         if [ ! -f "/boot/$initrd_name.uboot" ]
         then
-            mkimage -A arm -T ramdisk -C none -n uInitrd \
+            mkimage -A $arch -T ramdisk -C none -n uInitrd \
                     -d "/boot/$initrd_name" "/boot/$initrd_name.uboot"
         fi
 
@@ -195,7 +218,7 @@ systemctl disable systemd-timesyncd
 systemctl disable apt-daily.timer
 systemctl disable apt-daily-upgrade.timer
 systemctl disable exim4.service
-if [ "$image_kind" = "rpi32" ]
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     systemctl disable rpi-eeprom-update
 fi
@@ -213,7 +236,7 @@ done
 #   previously loaded (i.e, by walt-ipxe-kexec-reboot)
 systemctl disable kexec-load.service
 
-if [ "$image_kind" = "rpi32" ]
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     # restore official apt repositories
     mv /etc/apt/sources.list.official /etc/apt/sources.list

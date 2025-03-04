@@ -27,7 +27,7 @@ RUN wget -nv "${RELEASE_URL}/rk3568-nanopi-${MODEL}.dtb" -P "rootfs/boot/" && \
 RUN nice debootstrap --foreign --variant=minbase --arch arm64 --include apt-utils \
         ${OS_VERSION} "rootfs" ${OS_MIRROR}
 COPY overlays/generic overlays/${OS_TYPE} overlays/nanopi-r5c \
-     overlays/spec-nbfs overlays/walt-node rootfs/
+     overlays/mount.nbfs.arm64 overlays/walt-node rootfs/
 
 ## -- 2nd stage: finalize rootfs, run with arm64 arch transparently emulated by qemu
 FROM --platform=linux/arm64/v8 scratch as rootfs_finalizer

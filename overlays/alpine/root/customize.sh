@@ -10,6 +10,8 @@ image_kind="$1"
 # set to 1 if we recompile a kernel with kexec
 HAS_KEXEC=0
 
+ln -s /usr/sbin/mount.nbfs /sbin/mount.nbfs
+
 case "$image_kind" in
     "rpi32")
         PACKAGES="linux-rpi linux-rpi2 u-boot-tools dtc \

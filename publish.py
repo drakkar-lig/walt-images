@@ -68,12 +68,14 @@ else:
 
     # if the OS is the default one for a board model, also tag the image
     # with 'waltplatform/<model>-default' and push it
-    if model_type == 'rpi':
+    if model_type in ('rpi32', 'rpi64'):
         models = get_node_models_of_image(image_latest)
     else:
         models = [ model_type ]
     for model in models:
-        if os_type == env.DEFAULT_OS_TYPE_PER_BOARD_MODEL[model]:
+        def_desc = env.DEFAULT_IMAGE_PER_BOARD_MODEL[model]
+        def_desc = def_desc.split('.')
+        if image_descriptor == def_desc:
             hub_repo_name = f"waltplatform/{model}-default"
             image_model_default = f"{hub_repo_name}:latest"
             run(f'docker tag {image_latest} {image_model_default}')

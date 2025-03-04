@@ -26,12 +26,12 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     apt-get clean
 
 # get and run script to populate rootfs
-COPY base/rpi32/populate_rootfs.sh /root
-RUN nice /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
+COPY base/common/populate_rpi_rootfs.sh /root
+RUN nice /root/populate_rpi_rootfs.sh ${OS_TYPE} ${OS_VERSION} armhf
 
 # add various overlays
 COPY overlays/generic overlays/${OS_TYPE} \
-     overlays/spec-nbfs \
+     overlays/rpi overlays/mount.nbfs.armhf \
      overlays/rpi32 overlays/rpi32-${OS_TYPE} /rpi_fs/
 
 # add a copy of SD-card boot files
