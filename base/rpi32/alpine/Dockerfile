@@ -29,38 +29,9 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
 COPY base/rpi32/populate_rootfs.sh /root
 RUN nice /root/populate_rootfs.sh ${OS_TYPE} ${OS_VERSION}
 
-# download and build a linux kernel compatible with qemu arm 'virt' machine
-WORKDIR /root
-RUN wget -O /tmp/linux.tar.xz $KERNEL_ARCHIVE && \
-    tar xf /tmp/linux.tar.xz && rm /tmp/linux.tar.xz
-RUN mv linux-* linux
-WORKDIR /root/linux
-
-# 32-bit version
-ENV ARCH=arm
-ENV CROSS_COMPILE=arm-linux-gnueabi-
-ADD base/rpi32/linux-arm32.config .config
-RUN make olddefconfig && nice make -j $(nproc)
-RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
-RUN mkdir -p /rpi_fs/boot/qemu-arm-32 && \
-    cp arch/arm/boot/zImage /rpi_fs/boot/qemu-arm-32/kernel
-RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-32/
-
-# 64-bit version
-# note: for now there is no built-in decompressor for arm64,
-# thus we deploy a plain Image.
-ENV ARCH=arm64
-ENV CROSS_COMPILE=aarch64-linux-gnu-
-ADD base/rpi32/linux-arm64.config .config
-RUN make olddefconfig && nice make -j $(nproc)
-RUN make modules_install INSTALL_MOD_PATH=/rpi_fs
-RUN mkdir -p /rpi_fs/boot/qemu-arm-64 && \
-    cp arch/arm64/boot/Image /rpi_fs/boot/qemu-arm-64/kernel
-RUN cp include/config/kernel.release /rpi_fs/boot/qemu-arm-64/
-
 # add various overlays
-COPY overlays/generic overlays/${OS_TYPE} overlays/ipxe \
-     overlays/spec-ipxe-nbfs \
+COPY overlays/generic overlays/${OS_TYPE} \
+     overlays/spec-nbfs \
      overlays/rpi32 overlays/rpi32-${OS_TYPE} /rpi_fs/
 
 # add a copy of SD-card boot files
@@ -92,7 +63,7 @@ ARG KERNEL_VERSION
 # broadcom genet ethernet driver.)
 # future work: if building from aarch64 version, we could make an image
 # for models rpi3b, rpi3b+ and rpi4b & rpi400.
-LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,qemu-arm-32,qemu-arm-64
+LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus
 
 # specify min walt server version needed
 LABEL walt.server.minversion=5

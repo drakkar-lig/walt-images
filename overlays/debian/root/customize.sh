@@ -104,14 +104,6 @@ locale-gen
 # and generate initramfs images
 cd /tmp
 wget $EXTRACT_IKCONFIG_URL
-if [ "$image_kind" = "rpi32" ]
-then
-    sh /tmp/extract-ikconfig /boot/qemu-arm-32/kernel \
-        > "/boot/config-$(cat /boot/qemu-arm-32/kernel.release)"
-    sh /tmp/extract-ikconfig /boot/qemu-arm-64/kernel \
-        > "/boot/config-$(cat /boot/qemu-arm-64/kernel.release)"
-fi
-
 for kversion in $(ls /lib/modules)
 do
     if [ ! -f "/boot/config-$kversion" ]
@@ -125,13 +117,9 @@ done
 rm /tmp/extract-ikconfig
 
 # link or create u-boot image in relevant dirs
+cd /boot
 if [ "$image_kind" = "rpi32" ]
 then
-    cd /boot
-    # link arm32 and arm64 initrd files
-    ln -s ../initrd.img-${kernel_version}-arm32 qemu-arm-32/initrd
-    ln -s ../initrd.img-${kernel_version}-arm64 qemu-arm-64/initrd
-
     # detect rpi model dirs by their dtb file
     for model_dtb in */dtb
     do
