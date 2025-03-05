@@ -5,8 +5,10 @@ set -e
 PACKAGES="init ssh openssh-server usbutils texinfo \
     locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools wget \
     htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
-    lockfile-progs cron ptpd initramfs-tools nfs-common \
+    lockfile-progs ptpd initramfs-tools nfs-common \
     nbd-client"
+PACKAGES_NO_RECOMMENDS="cron"
+
 PACKAGES_FIRMWARE="firmware-realtek firmware-bnx2 firmware-bnx2x firmware-qlogic \
     firmware-atheros firmware-brcm80211 firmware-misc-nonfree"
 EXTRACT_IKCONFIG_URL="https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig"
@@ -84,6 +86,7 @@ mv /etc/default/ptpd /etc/default/ptpd.new
 
 # Install packages
 install_packages $PACKAGES
+install_packages --no-install-recommends $PACKAGES_NO_RECOMMENDS
 
 # restore diverted files
 mv /etc/default/ptpd.new /etc/default/ptpd
