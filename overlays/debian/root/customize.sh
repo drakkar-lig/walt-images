@@ -48,6 +48,12 @@ then
     /debootstrap/debootstrap --second-stage
 fi
 
+if [ -d /var/cache/apt/archives/partial ]
+then
+    chown _apt:root /var/cache/apt/archives/partial
+    chmod 700 /var/cache/apt/archives/partial
+fi
+
 case "$image_kind" in
     "rpi32")
         PACKAGES="u-boot-tools raspi-utils rpi-eeprom raspberrypi-kernel \
