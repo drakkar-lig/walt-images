@@ -2,7 +2,7 @@
 
 set -e
 
-PACKAGES="init ssh openssh-server usbutils texinfo \
+PACKAGES="init ssh openssh-server usbutils \
     locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools wget \
     htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
     lockfile-progs ptpd initramfs-tools nfs-common \
