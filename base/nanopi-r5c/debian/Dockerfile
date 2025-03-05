@@ -24,7 +24,7 @@ RUN mkdir -p downloads rootfs/usr/lib/firmware && \
     rm -rf downloads
 RUN wget -nv "${RELEASE_URL}/rk3568-nanopi-${MODEL}.dtb" -P "rootfs/boot/" && \
     chmod 644 rootfs/boot/*.dtb
-RUN nice debootstrap --foreign --variant=minbase --arch arm64 \
+RUN nice debootstrap --foreign --variant=minbase --arch arm64 --include apt-utils \
         ${OS_VERSION} "rootfs" ${OS_MIRROR}
 COPY overlays/generic overlays/${OS_TYPE} overlays/nanopi-r5c \
      overlays/spec-nbfs overlays/walt-node rootfs/
