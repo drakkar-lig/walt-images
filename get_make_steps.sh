@@ -7,7 +7,10 @@ base_or_featured="$2"
 if [ "$base_or_featured" = "" -o "$base_or_featured" = "base" ]
 then
     cd base
-    for f in $(ls -1 */*/Dockerfile)
+    # note: mendel build is broken (probably an issue with
+    # DNS filtering at LIG), so we exclude it. Google did not
+    # update it in recent years anyway.
+    for f in $(ls -1 */*/Dockerfile | grep -v mendel)
     do
         arch=$(dirname $(dirname $f))
         os_type=$(basename $(dirname $f))
