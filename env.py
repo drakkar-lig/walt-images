@@ -50,7 +50,7 @@ OS_TYPE_LABEL = {
 }
 
 IMAGE_OVERALL_TEMPLATE = """
-![walt logo](https://pimlig.imag.fr/wp-content/uploads/2019/03/logo-walt-123.png)
+![walt logo](https://walt-project.liglab.fr/gricad-gitlab/assets/favicon-72a2cad5025aa931d6ea56c3201d1f18e68a8cd39788c7c80d5b2b82aa5143ef.png)
 **WalT** project allows to build **highly configurable platforms for network experiments**.
 
 **Check-out the [website](https://walt-project.liglab.fr) for more info.**
@@ -58,7 +58,7 @@ IMAGE_OVERALL_TEMPLATE = """
 {image_description}
 
 ---
-![walt animated use case](https://walt-project.liglab.fr/-/wikis/walt.gif)
+![walt animated use case](https://walt-project.liglab.fr/-/wikis/uploads/7a9a9c8e63e320110a9b5b731e72cd74/walt.avif)
 """
 
 BASE_IMAGE_SHORT_DESC_TEMPLATES = {
