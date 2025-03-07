@@ -45,6 +45,7 @@ then
         # register Raspberry Pi Archive Signing Key
         apt-key add - < /root/82B129927FA3303E.pub
     fi
+    mkdir -p /media/sdcard
 elif [ "$image_kind" = "nanopi-r5c" ]
 then
     /debootstrap/debootstrap --second-stage
