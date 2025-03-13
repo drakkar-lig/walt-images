@@ -57,7 +57,7 @@ FROM --platform=linux/arm64 scratch
 ARG KERNEL_VERSION
 
 # specify which node models this image can handle
-LABEL walt.node.models=rpi-3-b,rpi-3-b-plus,rpi-4-b,rpi-400,rpi-5-b
+LABEL walt.node.models=rpi-3-b-plus,rpi-4-b,rpi-400,rpi-5-b
 
 # specify min walt server version needed
 LABEL walt.server.minversion=5
