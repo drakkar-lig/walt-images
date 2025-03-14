@@ -49,11 +49,21 @@ COPY --from=waltplatform/rpi-boot-builder \
 # us from problems.
 RUN sed -i -e "s/$/ u-boot:preserve_dtb/" /rpi_fs/boot/common-rpi/cmdline.txt
 
-# Target image
-# ------------
+# Alpine base
+# -----------
 # we consider the official arm32v6 alpine image is suitable
 # for raspberry pi boards
-FROM --platform=linux/arm/v6 arm32v6/alpine:${OS_VERSION}
+# note: specifying "--platform=linux/arm/v6" here does not work
+# well (cause image architecture warnings in walt image shell
+# or docker run), so we process in two steps here, we let the
+# target image specify "--platform=linux/arm/v6" and perform
+# "COPY --from=alpine_base / /" to retrieve the content of
+# this Alpine base image.
+FROM arm32v6/alpine:${OS_VERSION} as alpine_base
+
+# Target image
+# ------------
+FROM --platform=linux/arm/v6 scratch
 ARG KERNEL_VERSION
 
 # specify which node models this image can handle
@@ -69,6 +79,7 @@ LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus
 LABEL walt.server.minversion=5
 
 # prepare and run customization
+COPY --from=alpine_base / /
 COPY --from=builder /rpi_fs /
 RUN nice /root/customize.sh rpi32 ${KERNEL_VERSION}
 
