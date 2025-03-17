@@ -68,15 +68,15 @@ WORKDIR /root/rootfs
 RUN rm etc/rc.d/S*network   # disable network service startup (breaks the running NFS)
 RUN mkdir -p etc/walt usr/bin run
 COPY overlays/generic overlays/openwrt overlays/ipxe \
-     overlays/spec-ipxe-nbfs \
-     overlays/pc overlays/mount.nbfs.amd64 /root/rootfs/
+     overlays/spec-ipxe \
+     overlays/pc /root/rootfs/
 WORKDIR /root/rootfs/boot
+RUN rm -f common-ipxe/start-generic-nbfs.ipxe  # kernel is too old for NBFS
 RUN rm -f System.map-lts config-lts vmlinuz-lts initramfs-lts
 
 # create initramfs
 COPY base/pc-x86-64/openwrt/initrd_skeleton /root/initrd
 RUN mkdir -p /root/initrd/sbin
-RUN mv /root/rootfs/usr/sbin/mount.nbfs /root/initrd/sbin/  # mount.nbfs is only needed in the initrd
 COPY base/pc-x86-64/openwrt/create_initramfs.sh /root
 RUN /root/create_initramfs.sh
 
