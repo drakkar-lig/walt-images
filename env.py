@@ -71,13 +71,13 @@ BASE_IMAGE_SHORT_DESC_TEMPLATES = {
 }
 
 FEATURED_IMAGE_SHORT_DESC_TEMPLATES = {
-    'rpi-sd-update': {
+    'rpi32-sd-update': {
         'short': "WALT image for automatic RPi SD updates",
         'long': """\
 This image allows to automatically update the network bootloader and firmware files
 stored on the SD card of Raspberry Pi nodes."""
     },
-    'rpi-serial-monitor': {
+    'rpi32-serial-monitor': {
         'short': "WALT image for monitoring the serial line of another board",
         'long': """\
 This image allows to use a Raspberry Pi node to log or view in realtime
@@ -96,7 +96,7 @@ This image allows to turn pc-x86-64 node into a single-node Kubernetes (k3s) clu
 This image allows to add a k3s node to a cluster.
 (See also "pc-x86-64-k3s-server".)"""
     },
-    'rpi-rtk-base': {
+    'rpi32-rtk-base': {
         'short': "WALT image with RTKBase GPS software for raspberry pi boards",
         'long': """\
 This walt Raspberry Pi image embeds RTKBase frontend and scripts for
