@@ -26,6 +26,8 @@ RUN wget -nv "${RELEASE_URL}/rk3568-nanopi-${MODEL}.dtb" -P "rootfs/boot/" && \
     chmod 644 rootfs/boot/*.dtb
 RUN nice debootstrap --foreign --variant=minbase --arch arm64 --include apt-utils \
         ${OS_VERSION} "rootfs" ${OS_MIRROR}
+# ensure /proc is a directory, not a symlink to the host /proc...
+RUN if [ -L rootfs/proc ]; then rm rootfs/proc; mkdir rootfs/proc; fi
 COPY overlays/generic overlays/${OS_TYPE} overlays/nanopi-r5c \
      overlays/mount.nbfs.arm64 overlays/walt-node rootfs/
 
