@@ -1,0 +1,23 @@
+# On a standard Raspberry Pi OS 64bit system, /boot/firmware
+# is the mount point of the SD card. So the OS has a script at
+# /etc/initramfs/post-update.d/z50-raspi-firmware responsible
+# for copying any updated initramfs archive from /boot to
+# /boot/firmware.
+# This script verifies that /boot/firmware is a mountpoint,
+# and fails otherwise. It can still work in a walt image shell
+# session because the check is disabled when a virtual
+# environment is detected; but it fails in a walt node shell
+# session. So we add the following bind-mount to pass this check.
+
+[Unit]
+# This should not run in "walt image shell"
+ConditionVirtualization=!container
+
+[Mount]
+What=/boot/firmware
+Where=/boot/firmware
+Type=none
+Options=bind
+
+[Install]
+WantedBy=local-fs.target

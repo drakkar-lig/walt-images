@@ -211,8 +211,12 @@ fi
 # Allow passwordless root login on the serial console
 sed -i -e 's#^root:[^:]*:#root::#' /etc/shadow
 
-# enable service to save uptime in /run when ready
-systemctl enable uptime-ready
+# Enable our custom systemd units
+systemctl enable uptime-ready  # save uptime in /run when ready
+if [ "$image_kind" = "rpi64" ]
+then
+    systemctl enable boot-firmware.mount           # RPi OS requirement
+fi
 
 # tweak for faster bootup
 systemctl disable systemd-timesyncd

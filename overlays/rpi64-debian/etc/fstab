@@ -1,0 +1,3 @@
+proc            /proc           proc    nodev,noexec,nosuid 0 0
+/dev/mmcblk0p1  /media/sdcard   vfat    user,noauto         0 0
+# note: see also /etc/systemd/system/boot-firmware.mount
