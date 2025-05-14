@@ -1,0 +1,229 @@
+# walt filesystem mounting          -*- shell-script -*-
+
+walt_top()
+{
+    if [ "${walt_top_used}" != "yes" ]; then
+        [ "${quiet?}" != "y" ] && log_begin_msg "Running /scripts/walt-top"
+        run_scripts /scripts/walt-top
+        [ "$quiet" != "y" ] && log_end_msg
+    fi
+    walt_top_used=yes
+}
+
+walt_premount()
+{
+    if [ "${walt_premount_used}" != "yes" ]; then
+        [ "${quiet?}" != "y" ] && log_begin_msg "Running /scripts/walt-premount"
+        run_scripts /scripts/walt-premount
+        [ "$quiet" != "y" ] && log_end_msg
+    fi
+    walt_premount_used=yes
+}
+
+walt_bottom()
+{
+    if [ "${walt_premount_used}" = "yes" ] || [ "${walt_top_used}" = "yes" ]; then
+        [ "${quiet?}" != "y" ] && log_begin_msg "Running /scripts/walt-bottom"
+        run_scripts /scripts/walt-bottom
+        [ "$quiet" != "y" ] && log_end_msg
+    fi
+    walt_premount_used=no
+    walt_top_used=no
+}
+
+
+walt_set_resolv_conf() {
+    for dns_server in "$IPV4DNS0" "$IPV4DNS1"
+    do
+        if [ ! -z "$dns_server" -a "$dns_server" != "0.0.0.0" ]
+        then
+            echo "nameserver $dns_server" >> /etc/resolv.conf
+        fi
+    done
+}
+
+update_dhcp_config() {
+    interface="$1"
+    run_file="/run/net-${interface}.conf"
+    rm -f "$run_file"
+    for ROUNDTTT in 2 3 4 6 9 16 25 36 64 100; do
+        ipconfig -t ${ROUNDTTT} -c dhcp -d "${interface}"
+        [ -e "$run_file" ] && break
+    done
+    . "$run_file"
+}
+
+write_nc_custom() {
+    # For obvious security reasons, walt-init should bind
+    # walt-net-service only to the IP address used by the
+    # VPN interface.
+    # We prepare a script in /run, which will be detected
+    # and called by walt-net-service.
+    ip="$1"
+    cat > /run/nc-custom.sh << EOF
+#!/bin/sh
+exec nc -s "$ip" "\$@"
+EOF
+    # note: /run is mounted with noexec, so chmod would be
+    # useless. Instead, walt-net-service will call it using
+    # "sh /run/nc-custom.sh <args>".
+}
+
+# parse walt bootargs and mount walt
+walt_mount_root_impl()
+{
+    # local networking setup
+    configure_networking
+
+    # setup the VPN if relevant
+    if [ -e scripts/walt-vpn-client ]
+    then
+        . scripts/walt-vpn-tools
+        if walt_vpn_enabled
+        then
+            . /run/net-*.conf
+            walt_set_resolv_conf
+            if [ "${DNSDOMAIN}" = "walt" ]
+            then
+                # According to the local network configuration, we are
+                # already connected to the WalT network.
+                # Let's verify that securely.
+                if ! scripts/walt-vpn-client --check-server
+                then
+                    echo "** WalT VPN: This VPN-enabled node cannot boot" \
+                            "from another WalT network."
+                    echo "** WalT VPN: aborting boot procedure."
+                    sleep 5
+                    reboot -f now
+                    exit
+                fi
+                # ok
+                echo "Already in WalT network: bypassing WalT VPN establishment."
+                # no need for the VPN, however we must reconfigure the network
+                # with the mac address corresponding to final VPN bootup
+                # (to reflect the netsetup=[LAN|NAT] case, for instance)
+                ip link set down dev "${DEVICE}"
+                ip link set address "$(get_vpn_mac)" dev "${DEVICE}"
+                ip link set up dev "${DEVICE}"
+                update_dhcp_config "${DEVICE}"
+            else
+                # setup the VPN
+                scripts/walt-vpn-client
+                # network setup over the VPN
+                update_dhcp_config "walt-vpn"
+                # prepare /run/nc-custom.sh
+                write_nc_custom "${IPV4ADDR}"
+            fi
+        fi
+    fi
+
+    # root filesystem mounting
+    proto="$WALT_NETFS_PROTO"
+    case "$proto" in
+        "nbfs")
+            remote_share="${NBFSROOT}"
+            mount_prog=mount.nbfs
+            ;;
+        "nfs4")
+            remote_share="${NFSROOT}"
+            mount_prog=mount.nfs
+            ;;
+        "nfs")
+            remote_share="${NFSROOT}"
+            mount_prog=nfsmount
+            ;;
+    esac
+
+    # remote_share=[<server-ip>:]<root-dir>[,<options>]
+    if [ "${remote_share#*,}" != "${remote_share}" ]; then
+        options="-o ${remote_share#*,}"
+    fi
+    remote_share=${remote_share%%,*}
+    if [ "${remote_share#*:}" = "${remote_share}" ]; then
+        remote_share="${ROOTSERVER}:${remote_share}"
+    fi
+    # replace any "%s" pattern with the hostname
+    # (mimic the kernel behavior)
+    while [ "${remote_share#*%s}" != "${remote_share}" ]; do
+        if [ ! -z "$HOSTNAME" ]; then
+            host="$HOSTNAME"
+        else
+            host="$IPV4ADDR"
+        fi
+        remote_share="${remote_share%%%s*}${host}${remote_share#*%s}"
+    done
+
+    walt_premount
+
+    if [ "${readonly?}" = y ]; then
+        roflag="-o ro"
+    fi
+
+    # shellcheck disable=SC2086
+    ${mount_prog} ${roflag} ${options} "${remote_share}" "${rootmnt?}"
+}
+
+# NBFS root mounting
+walt_mount_root()
+{
+    walt_top
+
+    # get target protocol
+    WALT_NETFS_PROTO="${ROOT#/dev/}"
+
+    if [ "$WALT_NETFS_PROTO" = "nbfs" ]
+    then
+        # read nbfsroot from command line
+        for x in $(cat /proc/cmdline); do
+        case $x in
+            nbfsroot=*)
+                # shellcheck disable=SC2034
+                NBFSROOT="${x#nbfsroot=}"
+                ;;
+        esac
+        done
+        # load fuse
+        modprobe fuse
+    fi
+
+    modprobe af_packet # For DHCP
+
+    wait_for_udev 10
+
+    # Default delay is around 180s
+    delay=${ROOTDELAY:-180}
+
+    # loop until mount -t walt succeeds
+    walt_mount_root_impl
+    ret=$?
+    walt_retry_count=0
+    while [ ${walt_retry_count} -lt "${delay}" ] \
+        && [ $ret -ne 0 ] ; do
+        [ "$quiet" != "y" ] && log_begin_msg "Retrying walt mount"
+        sleep 1
+        walt_mount_root_impl
+        ret=$?
+        walt_retry_count=$(( walt_retry_count + 1 ))
+        [ "$quiet" != "y" ] && log_end_msg
+    done
+}
+
+mountroot()
+{
+    walt_mount_root
+}
+
+mount_top()
+{
+    walt_top
+}
+
+mount_premount()
+{
+    walt_premount
+}
+
+mount_bottom()
+{
+    walt_bottom
+}

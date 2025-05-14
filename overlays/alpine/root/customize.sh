@@ -72,12 +72,12 @@ then
 fi
 
 # update initramfs with ability to use nfs & nbfs
-echo 'kernel/fs/nfs/*' > /etc/mkinitfs/features.d/netroot.modules
-echo 'kernel/fs/fuse/*' >> /etc/mkinitfs/features.d/netroot.modules
-echo '/sbin/mount.nfs' > /etc/mkinitfs/features.d/netroot.files
-echo '/sbin/mount.nbfs' >> /etc/mkinitfs/features.d/netroot.files
-echo '/sbin/mount.netroot' >> /etc/mkinitfs/features.d/netroot.files
-echo 'features="base keymap kms virtio network dhcp netroot"' > /etc/mkinitfs/mkinitfs.conf
+echo 'kernel/fs/nfs/*' > /etc/mkinitfs/features.d/walt.modules
+echo 'kernel/fs/fuse/*' >> /etc/mkinitfs/features.d/walt.modules
+echo '/sbin/mount.nfs' > /etc/mkinitfs/features.d/walt.files
+echo '/sbin/mount.nbfs' >> /etc/mkinitfs/features.d/walt.files
+echo '/sbin/mount.walt' >> /etc/mkinitfs/features.d/walt.files
+echo 'features="base keymap kms virtio network dhcp walt"' > /etc/mkinitfs/mkinitfs.conf
 for kversion in $(ls /lib/modules) 
 do
     mkinitfs $kversion
@@ -86,15 +86,14 @@ chmod a+r /boot/initramfs-*     # for TFTP access
 
 if [ "$image_kind" = "rpi32" ]
 then
-    # create a u-boot image for initrd
-    for f in initramfs-rpi initramfs-rpi2
-    do
-        mkimage -A arm -T ramdisk -C none -n uInitrd -d /boot/$f /boot/common-rpi/$f.uboot
-    done
     # our image is based on arm32v6/alpine which does not work on the rpi4 and rpi400
     rm -rf /boot/rpi-4-b /boot/rpi-400
-    # generate other boot files
-    /boot/common-rpi/generate-boot-files.sh
+fi
+
+# generate boot files in relevant dirs
+if [ -e /boot/update-boot-files.sh ]
+then
+    /boot/update-boot-files.sh
 fi
 
 # Allow passwordless root login on the serial console

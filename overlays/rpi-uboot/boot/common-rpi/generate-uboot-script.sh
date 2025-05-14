@@ -9,7 +9,8 @@ fi
 
 if [ -z "$1" ]
 then
-    echo "Error: do not call this script directly, call generate-boot-files.sh instead. ABORTED."
+    echo "Error: do not call this script directly."
+    echo "       call /boot/update-boot-files.sh instead. ABORTED."
     exit
 fi
 

@@ -4,7 +4,7 @@ setenv walt_init "/bin/walt-init"
 # compute bootargs related to the network filesystem
 if test "$fs_proto" = ""; then setenv fs_proto "nfs"; fi  # default is "nfs"
 setenv fs_root "${serverip}:/var/lib/walt/nodes/${ipaddr}/fs"
-setenv fs_bootargs "root=/dev/${fs_proto} boot=netroot rootfstype=netroot"
+setenv fs_bootargs "root=/dev/${fs_proto} boot=walt rootfstype=walt"
 if test "$fs_proto" = "nbfs"
 then
     setenv fs_bootargs "$fs_bootargs nbfsroot=${fs_root}"

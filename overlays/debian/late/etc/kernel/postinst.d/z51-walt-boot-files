@@ -1,0 +1,21 @@
+#!/bin/sh
+# vim:ts=2:sw=2:et
+
+set -e
+
+# Play nice when run under debconf.
+exec </dev/null >&2
+
+eval set -- "$DEB_MAINT_PARAMS"
+case "$1" in
+  configure|"")
+    if [ -e /boot/update-boot-files.sh ]
+    then
+        /boot/update-boot-files.sh
+    fi
+    ;;
+  *)
+    # nothing to do
+    exit 0
+    ;;
+esac

@@ -7,7 +7,7 @@ WORKDIR /boot/common-rpi
 RUN sed -i -e \
     's/^setenv excluded_bootargs .*/setenv excluded_bootargs "root kgdboc console"/' \
     u-boot-scripts/analyse-given-bootargs.sh && \
-    ./generate-boot-files.sh
+    /boot/update-boot-files.sh
 # install rpi-serial-monitor service
 RUN systemctl enable rpi-serial-monitor && \
     apt update && \

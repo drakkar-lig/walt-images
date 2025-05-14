@@ -1,0 +1,13 @@
+[Unit]
+Description=Auto enroll walt vpn nodes on first boot
+After=multi-user.target
+# This should not run in "walt image shell"
+ConditionVirtualization=no
+
+[Service]
+ExecStart=walt-vpn-auto-enroll
+Type=simple
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target

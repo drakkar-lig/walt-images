@@ -1,0 +1,55 @@
+#!/bin/sh
+
+# inspired by the python code of rpi-eeprom-config
+read_eeprom_config() {
+    dtree_base="/sys/firmware/devicetree/base"
+    nvmem_ofnode_path="$(tr -d '\0' < $dtree_base/aliases/blconfig)"
+    for d in /sys/bus/nvmem/devices/*
+    do
+        if [ "$(realpath $d/of_node)" = "${dtree_base}${nvmem_ofnode_path}" ]
+        then
+            cat $d/nvmem
+            return  # ok
+        fi
+    done
+    echo "Could not read eeprom config!" >&2
+    return 1
+}
+
+read_eeprom_variable() {
+    variable="$1"
+    read_eeprom_config | \
+        grep "${variable}=" | \
+        sed -e 's/^[^=]*=//'
+}
+
+check_rpi5() {
+    model="$(tr -d "\0" < /proc/device-tree/model)"
+    echo "$model" | grep -q "^Raspberry Pi 5"
+}
+
+walt_vpn_enabled() {
+    if ! check_rpi5
+    then
+        return 1  # false, not a RPi 5
+    fi
+    if [ -z "$(read_eeprom_variable WALT_VPN_MAC)" ]
+    then
+        return 1  # false, RPi 5 not set up for VPN yet
+    fi
+    # The board is VPN-enabled
+    # However, if boot-mode is permissive and we are
+    # booting in a walt network, let's boot without the VPN.
+    if [ "${DNSDOMAIN}" = "walt" ]
+    then
+        if [ "$(read_eeprom_variable WALT_VPN_BOOT_MODE)" = "permissive" ]
+        then
+            return 1  # false, booting from inside a WalT network
+        fi
+    fi
+    return 0  # true, we will use the VPN
+}
+
+get_vpn_mac() {
+    echo -n "$(read_eeprom_variable WALT_VPN_MAC)"
+}

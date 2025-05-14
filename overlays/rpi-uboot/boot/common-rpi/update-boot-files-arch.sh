@@ -3,17 +3,67 @@ set -e
 
 arch="$1"
 
+. /boot/update-boot-files-functions.sh
+
 # Generate start.txt and start.uboot scripts
 # ------------------------------------------
-
 cd /boot/common-rpi
-./generate-uboot-script.sh start.txt start.uboot \
-    "set-download-cmd" \
-    "analyse-given-bootargs" \
-    "compute-bootargs" \
-    "set-fetch-addresses" \
-    "fetch" \
-    "boot-${arch}"
+if outdated start.uboot u-boot-scripts/*
+then
+    ./generate-uboot-script.sh start.txt start.uboot \
+        "set-download-cmd" \
+        "analyse-given-bootargs" \
+        "compute-bootargs" \
+        "set-fetch-addresses" \
+        "fetch" \
+        "boot-${arch}"
+fi
+
+# Generate initrd.uboot files
+# ---------------------------
+cd /boot
+# detect rpi model dirs by their dtb file
+for model_dtb in */dtb
+do
+    model=$(dirname $model_dtb)
+    cd /boot/$model
+
+    if [ -e "kernel.extension" ]
+    then
+        # use kernel.extension file (debian-style)
+        extension="$(cat "kernel.extension")"
+        full_kernel_version="$(get_kernel_version_from_extension "$extension")"
+        initrd_orig="../initrd.img-${full_kernel_version}"
+        initrd_uboot="${initrd_orig}.uboot"
+        create_link=1
+    else
+        # use initrd link target (alpine-style)
+        initrd_uboot="$(readlink initrd)"
+        initrd_orig="$(echo $initrd_uboot | sed -e 's/.uboot//')"
+    fi
+
+    # if initrd is not created yet for this model, exit and
+    # we will continue when recalled.
+    if [ ! -e "$initrd_orig" ]
+    then
+        echo "$initrd_orig not created yet, exiting."
+        exit 0
+    fi
+
+    # create u-boot image if outdated
+    if outdated "$initrd_uboot" "$initrd_orig"
+    then
+        echo "Generating $initrd_uboot"
+        mkimage -A $arch -T ramdisk -C none -n uInitrd \
+                -d "${initrd_orig}" "${initrd_uboot}"
+    fi
+
+    # create link if needed
+    if [ ! -e /boot/$model/initrd ]
+    then
+        ln -sf "${initrd_uboot}" /boot/$model/initrd
+    fi
+done
 
 # Generate FIT images
 # -------------------
@@ -61,6 +111,19 @@ done
 
 for series_model in $series_models
 do
+    deps="/boot/common-rpi/start.txt"
+    deps="$deps /boot/${series_model}/kernel"
+    deps="$deps /boot/${series_model}/initrd"
+    for model in $(cat $tmpdir/$series_model)
+    do
+        deps="$deps /boot/${model}/dtb"
+    done
+
+    if ! outdated /boot/${series_model}/fit.uboot $deps
+    then
+        continue
+    fi
+
     # generate f.its header
     cat > $tmpdir/f.its << EOF
 /dts-v1/;
@@ -130,6 +193,7 @@ EOF
 EOF
 
     # compile as a FIT image
+    echo "Generating /boot/${series_model}/fit.uboot"
     mkimage -f $tmpdir/f.its /boot/${series_model}/fit.uboot
 
     for model in $(cat $tmpdir/$series_model)
@@ -147,3 +211,7 @@ EOF
 done
 
 rm -rf $tmpdir
+
+# Check boot files (no broken symlinks)
+# -------------------------------------
+check_boot_files

@@ -1,0 +1,182 @@
+#!/bin/sh
+set -e
+SSH_CONNECT_TIMEOUT=10
+SSH_SERVER_ALIVE_INTERVAL=100
+SSH_MIN_ALIVE_TIME=60
+WALT_VPN_ROOTFS="/run/walt-vpn-rootfs"
+ROOT_USER_PASSWD_ENTRY="root:x:0:0:root:/root:/bin/sh"
+. /scripts/walt-vpn-tools
+
+this_program="$(realpath $0)"
+
+# Two cases:
+#
+# * "scripts/walt-vpn-client" (i.e., no args):
+#   Establish the VPN with a ssh tunnel linked to a new
+#   TAP interface "walt-vpn".
+#   Note that some network equipment along the VPN path
+#   may close long running TCP connections, usually after
+#   a couple of hours.
+#   So, for robustness, if the SSH connection is lost
+#   we restart it, unless the SSH connection last too
+#   little time (<1min), in which case we reboot the node.
+#   In order to deal with this situation long after the
+#   initramfs rootfs has been cleaned up by busybox run-init,
+#   this script creates a mini rootfs in /run and then
+#   chroots inside.
+#   This is implemented by steps 1, 2, 3 and 4 below.
+#
+# * "scripts/walt-vpn-client --check-server":
+#   Just run an ssh connexion test, to verify that the
+#   server host keys we have are correct, i.e., an attacker
+#   is not trying to spoof the walt network environment.
+#   Upon reception of this connexion test, the server also
+#   verifies that the SSH connexion comes from an IP address
+#   which belongs to the walt network. This prevents an
+#   attacker to make this test pass by forwarding this
+#   connexion test to the real server.
+#   This is implemented by steps 8 and 9.
+
+if [ "$1" = "--check-server" ]
+then
+    step=8
+    shift
+elif [ "$1" = "" ]
+then
+    step=1
+else
+    step="$1"
+fi
+
+# we run a dedicated ssh agent to be able to forward
+# authentication keys accross multiple hosts
+wrap_next_step_with_ssh_agent() {
+    # ssh will fail if root user does not exist
+    [ -e /etc/passwd ] || echo "$ROOT_USER_PASSWD_ENTRY" > /etc/passwd
+    # recursive call to next step
+    exec ssh-agent "$this_program" $((step+1))
+}
+
+# we add the key to the agent explicitely, using ssh-add.
+# (Using ssh option "-o AddKeysToAgent=yes" on ssh
+#  command apparently does not work: it only adds the
+#  key, not the certificate. Moreover, this allows us
+#  to remove the key files after ssh-add and before
+#  starting the ssh command.)
+add_ssh_creds() {
+    cd /root/.ssh
+    # add private key and signed pub key to ssh agent
+    ssh-add id_*[!pub]
+    # cleanup
+    rm -f id_*  # we no longer need these keys
+    cd /root
+}
+
+mini_ldd() {
+    LD_TRACE_LOADED_OBJECTS=1 "$1" | \
+              awk '{print $(NF-1)}' | \
+              grep -v 'vdso'
+}
+
+make_ssh_config() {
+    entrypoint="$(read_eeprom_variable WALT_VPN_ENTRYPOINT)"
+    cat << EOF
+Host walt-vpn-server
+  User walt-vpn
+  Hostname server.walt
+
+Host walt-vpn-entrypoint
+  User walt-vpn
+  Hostname ${entrypoint}
+
+Host *
+  PreferredAuthentications publickey
+  ConnectTimeout ${SSH_CONNECT_TIMEOUT}
+  ServerAliveInterval ${SSH_SERVER_ALIVE_INTERVAL}
+  ForwardAgent yes
+  LogLevel QUIET
+  RequestTTY no
+EOF
+}
+
+setup_dot_ssh() {
+    mkdir -p "$1"
+    cd "$1"
+    chmod 700 .
+    read_eeprom_variable WALT_VPN_CREDS | \
+        base64 -d | \
+        tar xfz -
+    make_ssh_config > config
+}
+
+setup_rootfs() {
+    mkdir $WALT_VPN_ROOTFS
+    mount -t tmpfs none $WALT_VPN_ROOTFS
+    cd $WALT_VPN_ROOTFS
+    mkdir -p usr/bin dev etc root/.ssh tmp run
+    ln -s /usr/bin bin
+    mount -t devtmpfs udev dev
+    cp /etc/resolv.conf etc/
+    setup_dot_ssh "root/.ssh"
+    cd $WALT_VPN_ROOTFS
+    for binary in busybox ssh ssh-add ssh-agent
+    do
+        binary=$(realpath $(which $binary))
+        for bindep in $binary $(mini_ldd $binary)
+        do
+            pdir=$(dirname $bindep)
+            mkdir -p "./${pdir}"
+            cp $bindep "./$bindep"
+        done
+    done
+    busybox --install -s usr/bin/
+    echo "$ROOT_USER_PASSWD_ENTRY" > etc/passwd
+    cp -a /scripts scripts
+}
+
+ssh_loop() {
+    while true
+    do
+        time -f "%e" -o "./delay_file" -- \
+            ssh "walt-vpn-entrypoint" 2>/dev/null || true
+        delay=$(tail -n 1 delay_file | sed -e "s/\..*$//")
+        if [ "$delay" -lt "$SSH_MIN_ALIVE_TIME" ]
+        then
+            echo "SSH connection ended too quickly. Rebooting." >&2
+            reboot -f now
+        else
+            echo "SSH connection lost, reconnecting." >&2
+        fi
+    done
+}
+
+case "$step" in
+    "1")
+        # Create a TAP managed by step 2 of this script.
+        exec tap-wrap --mac "$(get_vpn_mac)" -- "$this_program" 2
+        ;;
+    "2")
+        setup_rootfs
+        cd $WALT_VPN_ROOTFS
+        exec chroot . ".$this_program" 3
+        ;;
+    "3")
+        wrap_next_step_with_ssh_agent
+        ;;
+    "4")
+        add_ssh_creds
+        ssh_loop
+        ;;
+    "8")
+        setup_dot_ssh "/root/.ssh"
+        wrap_next_step_with_ssh_agent
+        ;;
+    "9")
+        # run the ssh server checking command
+        add_ssh_creds
+        ssh "walt-vpn-server" check-in-walt-net
+        ;;
+    *)
+        echo "Invalid step!" >&2
+        exit 1
+esac

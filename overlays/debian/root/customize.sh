@@ -2,11 +2,21 @@
 
 set -e
 
+DEBUG=0  # set to 1 for easier debugging
+
+if [ "$DEBUG" = 1 ]
+then
+    # indicate an error but exit sucessfully to let the
+    # calling Dockerfile save this state.
+    trap "echo ****** FIXME!!!!!!!!!!!! >&2; exit 0" EXIT
+fi
+
 PACKAGES="init ssh openssh-server usbutils \
     locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools wget \
     htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
     lockfile-progs ptpd initramfs-tools nfs-common \
     nbd-client"
+PACKAGES_RPI5_VPN="mtools curl"    # for VPN enrollment, boot.img
 PACKAGES_NO_RECOMMENDS="cron"
 
 PACKAGES_FIRMWARE="firmware-realtek firmware-bnx2 firmware-bnx2x firmware-qlogic \
@@ -18,17 +28,15 @@ install_packages() {
     DEBIAN_FRONTEND=noninteractive apt-get install -y "$@"
 }
 
-get_kernel_version_from_extension() {
-    ext="$1"
-    # we may have for instance extensions "+" and "-v7+", thus looking for entries
-    # ending with "+" is not enough, and that's why we return the shortest matching
-    # entry.
-    cd /lib/modules
-    ls -1 | grep -- "$ext$" | awk '{ print length, $0 }' | sort -n | cut -d" " -f2 | head -n 1
-}
-
 image_kind="$1"
 kernel_version="$2"
+
+if [ -e "/root/tap-wrap.c" ]
+then
+    vpn_capable_image=1
+else
+    vpn_capable_image=0
+fi
 
 if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
@@ -67,7 +75,7 @@ case "$image_kind" in
         PACKAGES="u-boot-tools raspi-utils raspi-firmware rpi-eeprom \
                   linux-image-rpi-v8 linux-image-rpi-2712 \
                   linux-headers-rpi-v8 linux-headers-rpi-2712 \
-                  $PACKAGES $PACKAGES_FIRMWARE"
+                  $PACKAGES $PACKAGES_RPI5_VPN $PACKAGES_FIRMWARE"
         arch=arm64
         ;;
     "nanopi-r5c")
@@ -109,6 +117,17 @@ install_packages --no-install-recommends $PACKAGES_NO_RECOMMENDS
 mv /etc/default/ptpd.new /etc/default/ptpd
 [ -e "/etc/default/lldpd.new" ] && mv /etc/default/lldpd.new /etc/default/lldpd
 
+# if source is provided (for images which support WalT VPN),
+# compile tap-wrap
+if [ -e "/root/tap-wrap.c" ]
+then
+    gcc -O2 -o /usr/bin/tap-wrap /root/tap-wrap.c
+fi
+
+# copy the directory tree /late to /
+cd /late
+cp -r . /
+
 # Install walt python packages
 python3 -m venv /opt/walt-node
 /opt/walt-node/bin/pip install --upgrade pip
@@ -136,76 +155,32 @@ do
 done
 rm /tmp/extract-ikconfig
 
-# link or create u-boot image in relevant dirs
-cd /boot
-if [ "$image_kind" = "rpi32" ]
+# generate boot files in relevant dirs
+if [ -e /boot/update-boot-files.sh ]
 then
-    # detect rpi model dirs by their dtb file
-    for model_dtb in */dtb
-    do
-        model=$(dirname $model_dtb)
-
-        # compute full kernel version including extension
-        extension="$(cat "$model/kernel.extension")"
-        full_kernel_version="$(get_kernel_version_from_extension "$extension")"
-
-        # create u-boot image
-        # (if not already done for a model having the same kernel)
-        initrd_name="initrd.img-${full_kernel_version}"
-        if [ ! -f "/boot/$initrd_name.uboot" ]
-        then
-            mkimage -A $arch -T ramdisk -C none -n uInitrd \
-                    -d "/boot/$initrd_name" "/boot/$initrd_name.uboot"
-        fi
-
-        # link into relevant dir
-        ln -s "../$initrd_name.uboot" /boot/$model/initrd
-    done
-
-    # generate other boot files
-    /boot/common-rpi/generate-boot-files.sh
+    /boot/update-boot-files.sh
 fi
 
 if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
-    # The file tree at /boot is very complex, with files coming from different
-    # sources ([repo_dir]/overlays/<overlay>, 'raspberrypi-bootloader' package,
-    # file copies from 'waltplatform/rpi-boot-builder' image, files generated
-    # by this script) and many cross-references using symlinks. The existence
-    # of broken symlinks is a good sign of an issue, so let's check that.
-    if [ $(find /boot -xtype l | wc -l) -ne 0 ]
-    then
-        echo "Issue detected in /boot. Found the following broken symlinks:"
-        find /boot -xtype l
-        exit 1
-    fi
-
     # let systemd use the watchdog with a 15s timeout
     sed -i -e 's/.*\(RuntimeWatchdogSec\).*/\1=15/g' \
            -e 's/.*\(RebootWatchdogSec\).*/\1=15/g' /etc/systemd/system.conf
-elif [ "$image_kind" = "nanopi-r5c" ]
-then
-    mkdir -p /boot/nanopi-r5c
-    cd /boot/nanopi-r5c
-    ln -s ../*.dtb dtb
-    mkimage -A arm64 -T ramdisk -C none -n uInitrd -d ../initrd.* initrd
-    ln -s ../vmlinuz* kernel
-    for proto in nfs nfs4 nbfs
-    do
-        mkimage -A arm -O linux -T script -C none -n "start-${proto}.uboot" \
-            -d start-uboot-${proto}.txt start-${proto}.uboot
-    done
-    ln -s start-nfs.uboot start.uboot   # default is nfs3
 fi
 
-# Allow passwordless root login on the serial console
-sed -i -e 's#^root:[^:]*:#root::#' /etc/shadow
+# Allow passwordless root login on the serial console,
+# unless the image can be used on a VPN node
+if [ "$vpn_capable_image" = 0 ]
+then
+    sed -i -e 's#^root:[^:]*:#root::#' /etc/shadow
+fi
 
 # Enable our custom systemd units
 systemctl enable uptime-ready  # save uptime in /run when ready
 if [ "$image_kind" = "rpi64" ]
 then
     systemctl enable boot-firmware.mount           # RPi OS requirement
+    systemctl enable walt-vpn-auto-enroll.service  # as the name suggests
 fi
 
 # tweak for faster bootup
@@ -247,3 +222,9 @@ rm -f /usr/sbin/policy-rc.d
 rm -rf /var/lib/apt/lists/*
 rm -rf /var/cache/apt/*
 rm -rf /root/*
+
+if [ "$DEBUG" = 1 ]
+then
+    # remove the exit handler.
+    trap "" EXIT
+fi

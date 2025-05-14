@@ -1,0 +1,247 @@
+#!/bin/sh
+set -e
+
+CURL_PREFER_HEADER="Prefer: errors=text-only"
+RPI5_SPI_DEV="/dev/spidev10.0"
+
+log_out() {
+    walt-log-echo "vpn.info" "$@"
+    echo "$@"
+}
+
+log_error() {
+    walt-log-echo "vpn.error" "$@"
+    echo "$@" >&2
+}
+
+log_error_dump_file() {
+    cat "$1" | walt-log-tee "vpn.error"
+}
+
+do_curl() {
+    path="http://server.walt/walt-vpn/$1"
+    shift
+    if ! curl --fail-with-body \
+              -H "$CURL_PREFER_HEADER" \
+              --no-progress-meter \
+              "$@" "$path" > $tmpdir/curl_out
+    then
+        log_error_dump_file $tmpdir/curl_out
+        return 1
+    else
+        cat $tmpdir/curl_out
+    fi
+}
+
+check_rpi5() {
+    model="$(tr -d "\0" < /proc/device-tree/model)"
+    if ! echo "$model" | grep -q "^Raspberry Pi 5"
+    then
+        echo "No, not on a Raspberry Pi 5. Exiting." >&2
+        exit 0
+    fi
+}
+
+check_rpi5_spi() {
+    if ! check_flashrom_rpi5
+    then
+        log_error "FAILED: SPI communication for flashing the EEPROM does not work."
+        exit 1
+    fi
+}
+
+flashrom_rpi5() {
+    speed=16000
+    if [ "$1" = "--speed" ]
+    then
+        speed="$2"
+        shift 2
+    fi
+    flashrom -p linux_spi:dev=${RPI5_SPI_DEV},spispeed=${speed} "$@"
+}
+
+flash_rpi5_eeprom()
+{
+    attempts=5
+    freq=16000
+    eeprom_image="$1"
+    out_option="-o /dev/null"
+
+    while [ ${attempts} -gt 0 ]
+    do
+        echo "flashing..."
+        if flashrom_rpi5 --speed $freq $out_option -w "$eeprom_image"
+        then
+            echo "OK."
+            return 0
+        else
+            attempts=$((attempts - 1))
+            if [ ${attempts} -gt 0 ]
+            then
+                # flashrom failed, so retry at a lower speed and
+                # re-enable its stdout.
+                freq=8000
+                out_option=""
+                echo "Flashing failed. Will retry..."
+            else
+                log_error "Flashing failed. Sorry, giving up."
+            fi
+        fi
+    done
+    return 1
+}
+
+check_flashrom_rpi5() {
+    # If we start flashrom without specifying what to do,
+    # it will just check communication with the SPI device
+    # and return with an appropriate error code.
+    # (rpi-eeprom-update does the same.)
+    flashrom_rpi5 >/dev/null
+}
+
+read_eeprom_variable() {
+    variable="$1"
+    rpi-eeprom-config | \
+        grep "${variable}=" | \
+        sed -e 's/^[^=]*=//'
+}
+
+cleanup() {
+    rm -rf "$tmpdir"
+}
+
+tmpdir=$(mktemp -d)
+trap cleanup EXIT
+
+echo "** Ensuring we are on a Raspberry Pi 5 node"
+check_rpi5
+
+echo "** Checking whether this node is already up-to-date"
+cur_ssh_entrypoint="$(read_eeprom_variable WALT_VPN_ENTRYPOINT)"
+cur_http_entrypoint="$(read_eeprom_variable HTTP_HOST)"
+cur_boot_mode="$(read_eeprom_variable WALT_VPN_BOOT_MODE)"
+cur_vpn_mac="$(read_eeprom_variable WALT_VPN_MAC)"
+ssh_entrypoint="$(do_curl "node-conf/ssh-entrypoint")"
+http_entrypoint="$(do_curl "node-conf/http-entrypoint")"
+boot_mode="$(do_curl "node-conf/boot-mode")"
+vpn_mac="$(do_curl "node-conf/vpn-mac")"
+
+if [ "$ssh_entrypoint" = "" -o \
+     "$http_entrypoint" = "" -o \
+     "$boot_mode" = "" ]
+then
+    echo "The VPN is not fully configured on server-side. Exiting."
+    exit 0
+fi
+
+if [ "$cur_ssh_entrypoint" = "$ssh_entrypoint" -a \
+     "$cur_http_entrypoint" = "$http_entrypoint" -a \
+     "$cur_boot_mode" = "$boot_mode" -a \
+     "$cur_vpn_mac" = "$vpn_mac" ]
+then
+    echo "Already up-to-date. Exiting."
+    exit 0
+fi
+
+echo "** Ensuring the SPI is OK"
+check_rpi5_spi
+
+# The node may seem to be set up already, but for another
+# WalT platform. Let's check this.
+if [ "$cur_vpn_mac" != "" -a "$vpn_mac" != "$cur_vpn_mac" ]
+then
+    # platform is different, discard all data we had in EEPROM
+    cur_ssh_entrypoint=""
+    cur_http_entrypoint=""
+    cur_boot_mode=""
+    cur_vpn_mac=""
+fi
+
+if [ "$cur_ssh_entrypoint" != "$ssh_entrypoint" ]
+then
+    mkdir "$tmpdir/ssh"
+    cd "$tmpdir/ssh"
+
+    if [ "$cur_ssh_entrypoint" = "" ]
+    then
+        # this is a new node, we need to enroll
+        echo "** Generating SSH keypair"
+        ssh-keygen -q -N '' -t ecdsa -b 384 -f "id_walt_vpn"
+
+        echo "** Sending enrollment request"
+        do_curl enroll -F "ssh-pubkey=@-" >/dev/null < "id_walt_vpn.pub"
+
+        echo "** Fetching pubkey signed by VPN CA"
+        do_curl node-conf/ssh-pubkey-cert > "id_walt_vpn-cert.pub"
+        rm "id_walt_vpn.pub"  # no longer needed
+    else
+        # we already enrolled, only the ssh entrypoint has changed
+        # (so the host keys will be updated below)
+        # let's retrieve our SSH credentials from eeprom.
+        read_eeprom_variable "WALT_VPN_CREDS" | \
+            base64 -d | \
+            tar xfz -
+    fi
+
+    echo "** Fetching SSH VPN entrypoint host keys"
+    do_curl node-conf/ssh-entrypoint-host-keys > "known_hosts"
+
+    # for booting inside the walt network, we connect
+    # directly to server.walt instead of the SSH entrypoint
+    echo "** Fetching SSH host keys of WALT server"
+    ssh-keyscan -H server.walt >> "known_hosts"
+
+    chmod 600 "known_hosts"
+
+    vpn_creds="$(tar cf - id_walt_vpn id_walt_vpn-cert.pub known_hosts | \
+        gzip --best | base64 -w 0)"
+else
+    vpn_creds="$(read_eeprom_variable "WALT_VPN_CREDS")"
+fi
+
+echo "** Fetching other WalT VPN parameters"
+cd "$tmpdir"
+for param in public.pem http-path vpn-mac
+do
+    do_curl "node-conf/${param}" > "${param}"
+done
+
+echo "** Generating a new eeprom image"
+http_path="$(cat "http-path")"
+vpn_mac="$(cat "vpn-mac")"
+if [ "$boot_mode" = "enforced" ]
+then
+	boot_order="0xf7"    # signed HTTP-boot only
+	bootloader_self_update=0
+else
+	boot_order="0xf127"  # signed HTTP-boot, TFTP, SD card
+	bootloader_self_update=1
+fi
+cat > "bootconf.txt" << EOF
+[all]
+BOOT_UART=1
+BOOT_ORDER=${boot_order}
+NET_INSTALL_ENABLED=0
+ENABLE_SELF_UPDATE=${bootloader_self_update}
+HTTP_HOST=${http_entrypoint}
+HTTP_PATH=${http_path}
+DHCP_REQ_TIMEOUT=500
+WALT_VPN_MAC=${vpn_mac}
+WALT_VPN_ENTRYPOINT=${ssh_entrypoint}
+WALT_VPN_BOOT_MODE=${boot_mode}
+WALT_VPN_CREDS=${vpn_creds}
+EOF
+base_eeprom="$(rpi-eeprom-update -l)"
+rpi-eeprom-config -c bootconf.txt -p public.pem -o pieeprom.bin "$base_eeprom"
+
+echo "** Flashing the eeprom image"
+flash_rpi5_eeprom pieeprom.bin
+
+# log the update
+if [ "$cur_ssh_entrypoint" = "" ]
+then
+    action="Initial enrollment"
+else
+    action="Update of VPN configuration"
+fi
+log_out "$action completed successfully."

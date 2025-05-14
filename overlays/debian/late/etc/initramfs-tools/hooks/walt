@@ -15,13 +15,13 @@ esac
 
 . /usr/share/initramfs-tools/hook-functions
 
-# nbfs and nfs v4 mount commands
-for cmd in mount.nbfs mount.nfs
+# network mount, and vpn management commands
+for cmd in $(cat /etc/initramfs-tools/hooks/walt-*.binaries)
 do
     cmd_path="${DESTDIR}/sbin/${cmd}"
-    if [ -e /sbin/${cmd} ]
+    if orig_cmd_path="$(which ${cmd})"
     then
-        copy_exec /sbin/${cmd} /sbin
+        copy_exec "$orig_cmd_path" /sbin
     else
         cat > "$cmd_path" << EOF
 #!/bin/sh
@@ -33,5 +33,7 @@ EOF
 done
 
 # modules needed
-manual_add_modules fuse
-manual_add_modules nfsv4
+for mod in $(cat /etc/initramfs-tools/hooks/walt-*.modules)
+do
+    manual_add_modules $mod
+done
