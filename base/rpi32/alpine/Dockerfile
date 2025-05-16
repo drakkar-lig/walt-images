@@ -30,9 +30,9 @@ COPY base/common/populate_rpi_rootfs.sh /root
 RUN nice /root/populate_rpi_rootfs.sh ${OS_TYPE} ${OS_VERSION} armhf
 
 # add various overlays
-COPY overlays/generic overlays/${OS_TYPE} \
-     overlays/rpi overlays/mount.nbfs.armhf \
-     overlays/rpi32 overlays/rpi32-${OS_TYPE} /rpi_fs/
+COPY overlays/generic overlays/${OS_TYPE} overlays/rpi \
+     overlays/rpi-uboot overlays/rpi32-uboot overlays/mount.nbfs.armhf \
+     overlays/rpi32-${OS_TYPE} /rpi_fs/
 
 # add a copy of SD-card boot files
 # (needed to allow rpi3+ and later to boot without a SD card)

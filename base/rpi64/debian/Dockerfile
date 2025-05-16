@@ -31,9 +31,9 @@ RUN nice /root/populate_rpi_rootfs.sh ${OS_TYPE} ${OS_VERSION} arm64
 
 # add various overlays
 COPY overlays/generic overlays/debian \
-     overlays/spec-nbfs overlays/walt-node \
-     overlays/rpi overlays/rpi-debian overlays/mount.nbfs.arm64 \
-     overlays/rpi64 overlays/rpi64-debian /rpi_fs/
+     overlays/walt-node overlays/rpi overlays/rpi64-uboot \
+     overlays/rpi-uboot overlays/rpi-debian overlays/mount.nbfs.arm64 \
+     overlays/rpi64-debian overlays/spec-nbfs /rpi_fs/
 
 # add a copy of SD-card boot files
 # (needed to allow rpi3+ and later to boot without a SD card)
