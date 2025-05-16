@@ -1,1 +1,1 @@
-../common-rpi/config-64.txt
+../common-rpi/config.txt

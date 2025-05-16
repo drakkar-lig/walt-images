@@ -1,0 +1,1 @@
+console=tty1 console=serial0,115200 boot=walt root=/dev/nfs4 nfsroot=/var/lib/walt/nodes/%s/fs,ro,nocto,acregmin=157680000,acregmax=157680000,acdirmin=157680000,acdirmax=157680000 init=/bin/walt-init panic=15 net.ifnames=0 biosdevname=0

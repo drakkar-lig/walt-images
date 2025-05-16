@@ -1,0 +1,1 @@
+console=tty1 console=serial0,115200 boot=walt root=/dev/nbfs nbfsroot=/var/lib/walt/nodes/%s/fs init=/bin/walt-init panic=15 net.ifnames=0 biosdevname=0

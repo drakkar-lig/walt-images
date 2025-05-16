@@ -120,19 +120,6 @@ echo 'en_US.UTF-8 UTF-8' >> /etc/locale.gen
 echo 'fr_FR.UTF-8 UTF-8' >> /etc/locale.gen
 locale-gen
 
-# rpi64 has configurable network filesystem protocol
-if [ "$image_kind" = "rpi64" ]
-then
-    for proto in nfs nfs4 nbfs
-    do
-        sed -e "s/$/ u-boot:fs_proto=${proto}/" \
-            < /boot/common-rpi/cmdline.txt \
-            > /boot/common-rpi/cmdline-${proto}.txt
-    done
-    # default is nfs
-    ln -sf cmdline-nfs.txt /boot/common-rpi/cmdline.txt
-fi
-
 # extract missing kernel config files (ik=in-kernel)
 # and generate initramfs images
 cd /tmp
@@ -151,7 +138,7 @@ rm /tmp/extract-ikconfig
 
 # link or create u-boot image in relevant dirs
 cd /boot
-if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
+if [ "$image_kind" = "rpi32" ]
 then
     # detect rpi model dirs by their dtb file
     for model_dtb in */dtb
@@ -177,7 +164,10 @@ then
 
     # generate other boot files
     /boot/common-rpi/generate-boot-files.sh
+fi
 
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
+then
     # The file tree at /boot is very complex, with files coming from different
     # sources ([repo_dir]/overlays/<overlay>, 'raspberrypi-bootloader' package,
     # file copies from 'waltplatform/rpi-boot-builder' image, files generated

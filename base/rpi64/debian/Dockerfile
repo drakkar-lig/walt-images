@@ -31,25 +31,9 @@ RUN nice /root/populate_rpi_rootfs.sh ${OS_TYPE} ${OS_VERSION} arm64
 
 # add various overlays
 COPY overlays/generic overlays/debian \
-     overlays/walt-node overlays/rpi overlays/rpi64-uboot \
-     overlays/rpi-uboot overlays/rpi-debian overlays/mount.nbfs.arm64 \
+     overlays/walt-node overlays/rpi \
+     overlays/rpi-debian overlays/mount.nbfs.arm64 \
      overlays/rpi64-debian overlays/spec-nbfs /rpi_fs/
-
-# add a copy of SD-card boot files
-# (needed to allow rpi3+ and later to boot without a SD card)
-COPY --from=waltplatform/rpi-boot-builder \
-            /opt/boot_files/cmdline.txt \
-            /opt/boot_files/config-64.txt \
-            /opt/boot_files/u-boot-rpi-3-b-64b.img \
-            /opt/boot_files/u-boot-rpi-4-b-64b.img \
-            /opt/boot_files/u-boot-rpi-5-b.img \
-    /rpi_fs/boot/common-rpi/
-# when using firmware network boot (boot without a SD card), dtb will be loaded
-# directly by firmware, and u-boot should not make a new TFTP request for it.
-# the firmware-provided dtb has custom modifications that u-boot cannot apply
-# when loading another dtb, thus bypassing this secondary dtb loading preserves
-# us from problems.
-RUN sed -i -e "s/$/ u-boot:preserve_dtb/" /rpi_fs/boot/common-rpi/cmdline.txt
 
 # Target image
 # ------------
