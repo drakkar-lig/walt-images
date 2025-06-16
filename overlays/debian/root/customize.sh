@@ -15,7 +15,7 @@ PACKAGES="init ssh openssh-server usbutils \
     locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools wget \
     htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
     lockfile-progs ptpd initramfs-tools nfs-common \
-    nbd-client"
+    nbd-client jq"
 PACKAGES_RPI5_VPN="mtools curl"    # for VPN enrollment, boot.img
 PACKAGES_NO_RECOMMENDS="cron"
 
@@ -176,7 +176,8 @@ then
 fi
 
 # Enable our custom systemd units
-systemctl enable uptime-ready  # save uptime in /run when ready
+systemctl enable uptime-ready       # save uptime in /run when ready
+systemctl enable walt-lldp-monitor  # notify LLDP neighbors to server
 if [ "$image_kind" = "rpi64" ]
 then
     systemctl enable boot-firmware.mount           # RPi OS requirement

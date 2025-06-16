@@ -1,0 +1,17 @@
+[Unit]
+Description=Inform WalT server of new LLDP neighbors
+# If the WalT server version is too old, it does not
+# handle this feature, so do not start this service.
+# If it is new enough, then it adds an executable
+# at [image-root]:/bin/walt-report-lldp-neighbor.
+# Our script at /bin/walt-lldp-monitor will call it
+# for each new neighbor detected.
+ConditionFileIsExecutable=/bin/walt-report-lldp-neighbor
+After=lldpd.service
+
+[Service]
+ExecStart=/bin/walt-lldp-monitor
+Type=simple
+
+[Install]
+WantedBy=lldpd.service

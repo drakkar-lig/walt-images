@@ -1,0 +1,18 @@
+#!/bin/sh
+
+filter='"\(.chassis[0].id[0].type) \(.chassis[0].id[0].value) \(.port[0].id[0].value)"'
+
+lldpcli -f json0 watch | \
+    jq --unbuffered '."lldp-added"[0].interface[0]' | \
+    jq -r --unbuffered "$filter" | \
+    while read t sw_mac sw_port_lldp_label
+    do
+        if [ "$t" != "mac" -o \
+            "$sw_mac" = "null" -o \
+            "$sw_port_lldp_label" = "null" ]
+        then
+            continue
+        fi
+	echo "Reporting neighbor $sw_mac $sw_port_lldp_label"
+        /bin/walt-report-lldp-neighbor "$sw_mac" "$sw_port_lldp_label"
+    done
