@@ -1,0 +1,5 @@
+# walt: keep walt node name as hostname
+hostname="$(cat /proc/sys/kernel/hostname)"
+uci set system.@system[0].hostname="$hostname"
+uci commit system
+exit 0

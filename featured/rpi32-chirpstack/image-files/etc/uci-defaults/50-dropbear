@@ -1,0 +1,7 @@
+# walt config:
+# Openwrt uses a patched dropbear package.
+# If connecting remotely as root, only /etc/dropbear/authorized_keys
+# is checked, not /root/.ssh/authorized_keys.
+# The walt server writes its public key at /root/.ssh/authorized_keys,
+# so let's move this where dropbear expects it.
+mv /root/.ssh/authorized_keys /etc/dropbear/authorized_keys

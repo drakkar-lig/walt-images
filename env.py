@@ -100,6 +100,11 @@ This image allows to add a k3s node to a cluster.
         'long': """\
 This walt Raspberry Pi image embeds RTKBase frontend and scripts for
 managing U-Blox ZED-F9P Gnss Receiver."""
+    },
+    'rpi32-chirpstack': {
+        'short': "WALT image for Chirpstack Gateway OS on raspberry pi boards",
+        'long': """\
+This walt image allows to boot a Raspberry Pi node with Chirpstack Gateway OS."""
     }
 }
 

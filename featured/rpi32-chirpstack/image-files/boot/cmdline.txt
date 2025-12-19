@@ -1,0 +1,1 @@
+console=serial0,115200 root=/dev/nfs nfsroot=/var/lib/walt/nodes/%s/fs,ro,v3 ip=dhcp init=/bin/walt-init

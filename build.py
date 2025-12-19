@@ -11,8 +11,10 @@ image_descriptor = sys.argv[1].split('.')
 
 if image_descriptor[0] == 'featured':
     name = image_descriptor[1]
+    src_dir = f"featured/{name}"
     subprocess.run(f'nice docker build \
-        -f featured/{name}/Dockerfile \
+        --build-arg SRC_DIR="{src_dir}" \
+        -f {src_dir}/Dockerfile \
         --tag=waltplatform/{name}:latest .',
         check=True, shell=True)
 else:
