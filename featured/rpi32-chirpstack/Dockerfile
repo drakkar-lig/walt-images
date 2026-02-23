@@ -4,7 +4,7 @@ FROM debian:trixie as chirpstack-builder
 ARG SRC_DIR="."
 ARG MERGE_CONFIG_URL="https://raw.githubusercontent.com/u-boot/u-boot/refs/tags/v2025.10/scripts/kconfig/merge_config.sh"
 ARG CS_GW_OS_GIT="https://github.com/chirpstack/chirpstack-gateway-os.git"
-ARG CS_GW_OS_TAG="v4.9.0"
+ARG CS_GW_OS_TAG="v4.10.1"
 
 # -- Install the packages we need for this build step --
 # mostly based on
