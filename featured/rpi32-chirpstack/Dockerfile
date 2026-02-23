@@ -71,6 +71,12 @@ RUN ln -sf ${ENV}/files conf/files && \
     cp conf/${ENV}/.config openwrt/.config
 RUN cd openwrt && quilt push -a
 
+# avoid downloading precompiled archives from ci-artifacts.rust-lang.org
+# because they remove old ones after some time, so we may get
+# failures there, sometimes.
+RUN sed -i -e "s/download-ci-llvm=true/download-ci-llvm=false/" \
+    /workdir/openwrt/package/feeds/packages/rust/Makefile
+
 # 2. Update OpenWRT config and compile it
 WORKDIR /workdir/openwrt
 # File build-files/openwrt.config contains only the changes
