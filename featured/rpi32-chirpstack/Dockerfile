@@ -177,13 +177,13 @@ RUN cp /image-files/etc/uci-defaults/50-dropbear \
 # really be an IP gateway anyway
 RUN rm etc/rc.d/S*dnsmasq
 # create node models boot directories
-RUN cd boot && ln -s . rpi-3-b-plus
+RUN cd boot && ln -s . rpi-3-b-plus && ln -s . rpi-4-b
 
 # Step 2: Build the final image
 # -----------------------------
 FROM --platform=linux/arm/v6 scratch
 # specify which node models this image can handle
-LABEL walt.node.models=rpi-3-b-plus
+LABEL walt.node.models=rpi-3-b-plus,rpi-4-b
 # specify min walt server version needed
 LABEL walt.server.minversion=5
 # copy file tree prepared above
