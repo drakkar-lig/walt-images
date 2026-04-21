@@ -220,6 +220,7 @@ fi
 cat > "bootconf.txt" << EOF
 [all]
 BOOT_UART=1
+HDMI_DELAY=0
 BOOT_ORDER=${boot_order}
 NET_INSTALL_ENABLED=0
 ENABLE_SELF_UPDATE=${bootloader_self_update}
