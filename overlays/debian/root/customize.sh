@@ -163,9 +163,9 @@ fi
 
 if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
-    # let systemd use the watchdog with a 15s timeout
-    sed -i -e 's/.*\(RuntimeWatchdogSec\).*/\1=15/g' \
-           -e 's/.*\(RebootWatchdogSec\).*/\1=15/g' /etc/systemd/system.conf
+    # let systemd use the watchdog with a 180s timeout
+    sed -i -e 's/.*\(RuntimeWatchdogSec\).*/\1=180/g' \
+           -e 's/.*\(RebootWatchdogSec\).*/\1=180/g' /etc/systemd/system.conf
 fi
 
 # Allow passwordless root login on the serial console,
