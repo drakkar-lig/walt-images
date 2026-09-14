@@ -15,7 +15,7 @@ PACKAGES="init ssh openssh-server usbutils \
     locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools wget \
     htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
     lockfile-progs ptpd initramfs-tools nfs-common \
-    nbd-client jq"
+    jq"
 PACKAGES_RPI5_VPN="mtools curl"    # for VPN enrollment, boot.img
 PACKAGES_NO_RECOMMENDS="cron"
 
