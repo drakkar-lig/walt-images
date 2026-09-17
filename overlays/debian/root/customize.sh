@@ -13,8 +13,8 @@ fi
 
 PACKAGES="init ssh openssh-server usbutils \
     locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools wget \
-    htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
-    lockfile-progs ptpd initramfs-tools nfs-common \
+    htop e2fsprogs dosfstools iputils-ping python3-serial ntpsec-ntpdate \
+    ifupdown lockfile-progs ptpd initramfs-tools nfs-common \
     jq"
 PACKAGES_RPI5_VPN="mtools curl"    # for VPN enrollment, boot.img
 PACKAGES_NO_RECOMMENDS="cron"
@@ -117,6 +117,10 @@ install_packages --no-install-recommends $PACKAGES_NO_RECOMMENDS
 mv /etc/default/ptpd.new /etc/default/ptpd
 [ -e "/etc/default/lldpd.new" ] && mv /etc/default/lldpd.new /etc/default/lldpd
 
+# do this early (but we need wget) because it sometimes fails
+cd /tmp
+wget $EXTRACT_IKCONFIG_URL
+
 # if source is provided (for images which support WalT VPN),
 # compile tap-wrap
 if [ -e "/root/tap-wrap.c" ]
@@ -141,8 +145,6 @@ locale-gen
 
 # extract missing kernel config files (ik=in-kernel)
 # and generate initramfs images
-cd /tmp
-wget $EXTRACT_IKCONFIG_URL
 for kversion in $(ls /lib/modules)
 do
     if [ ! -f "/boot/config-$kversion" ]
@@ -188,7 +190,6 @@ fi
 systemctl disable systemd-timesyncd
 systemctl disable apt-daily.timer
 systemctl disable apt-daily-upgrade.timer
-systemctl disable exim4.service
 if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     systemctl disable rpi-eeprom-update
@@ -197,15 +198,6 @@ for timer_unit in $(ls /etc/systemd/system/timers.target.wants)
 do
     systemctl disable "$timer_unit"
 done
-
-# tweak system for kexec:
-# * disable kexec-load.service, we don't want to load the
-#   same kernel automatically because image may have changed
-#   when we reboot the node
-# * we keep kexec.service activated, which will be triggered
-#   at the end of the OS shutdown if a kexec kernel was
-#   previously loaded (i.e, by walt-ipxe-kexec-reboot)
-systemctl disable kexec-load.service
 
 if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
