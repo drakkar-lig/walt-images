@@ -83,16 +83,13 @@ case "$image_kind" in
         PACKAGES="u-boot-tools linux-image-arm64 \
                   rfkill wireless-regdb wpasupplicant $PACKAGES"
         ;;
-    "pc-x86-32")
-        PACKAGES="linux-image-686-pae $PACKAGES $PACKAGES_FIRMWARE"
-        ;;
     "pc-x86-64")
         PACKAGES="linux-image-amd64 $PACKAGES $PACKAGES_FIRMWARE"
         ;;
 esac
 
 case "$image_kind" in
-    "pc-x86-32"|"pc-x86-64")
+    "pc-x86-64")
         if [ -f /etc/apt/sources.list ]
         then
                 # add non-free apt section
