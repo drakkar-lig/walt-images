@@ -57,16 +57,12 @@ possibly_update_rpi4_firmware() {
         return      # nothing to do
     fi
 
-    # select firmware file (preferably the one we tested, otherwise the newest stable one)
-    firmware="/lib/firmware/raspberrypi/bootloader/stable/pieeprom-2020-07-16.bin"
-    if [ ! -f "$firmware" ]
+    # select firmware file (the newest one of the "default" release channel)
+    firmware="$(ls -1 /lib/firmware/raspberrypi/bootloader-2711/default/pieeprom-*.bin | tail -n 1)"
+    if [ -z "$firmware" ]
     then
-        firmware="$(ls -1rt /lib/firmware/raspberrypi/bootloader/stable/pieeprom-*.bin | tail -n 1)"
-        if [ -z "$firmware" ]
-        then
-            echo "Could not find firmware file!" >&2
-            return 1
-        fi
+        echo "Could not find firmware file!" >&2
+        return 1
     fi
 
     # build a modified copy of the firmware with appropriate configuration

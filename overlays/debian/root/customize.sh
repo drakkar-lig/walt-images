@@ -46,13 +46,9 @@ then
     /debootstrap/debootstrap --second-stage
     mv /bin/mount.saved /bin/mount
 
-    # update apt repositories for faster build
-    mv /etc/apt/sources.list.fast /etc/apt/sources.list
-    if [ "$image_kind" = "rpi32" ]
-    then
-        # register Raspberry Pi Archive Signing Key
-        apt-key add - < /root/82B129927FA3303E.pub
-    fi
+    # apt sources are defined in /etc/apt/sources.list.d/*.sources
+    # (see populate_rpi_rootfs.sh), remove the one written by debootstrap
+    rm -f /etc/apt/sources.list
     mkdir -p /media/sdcard
 elif [ "$image_kind" = "nanopi-r5c" ]
 then
@@ -67,12 +63,15 @@ fi
 
 case "$image_kind" in
     "rpi32")
-        PACKAGES="u-boot-tools raspi-utils rpi-eeprom raspberrypi-kernel \
-                  raspberrypi-bootloader $PACKAGES $PACKAGES_FIRMWARE"
+        PACKAGES="u-boot-tools raspi-utils raspi-firmware rpi-eeprom \
+                  raspberrypi-archive-keyring \
+                  linux-image-rpi-v6 linux-image-rpi-v7 \
+                  $PACKAGES $PACKAGES_FIRMWARE"
         arch=arm
         ;;
     "rpi64")
         PACKAGES="u-boot-tools raspi-utils raspi-firmware rpi-eeprom \
+                  raspberrypi-archive-keyring \
                   linux-image-rpi-v8 linux-image-rpi-2712 \
                   linux-headers-rpi-v8 linux-headers-rpi-2712 \
                   $PACKAGES $PACKAGES_RPI5_VPN $PACKAGES_FIRMWARE"
@@ -109,6 +108,13 @@ mv /etc/default/ptpd /etc/default/ptpd.new
 # Install packages
 install_packages $PACKAGES
 install_packages --no-install-recommends $PACKAGES_NO_RECOMMENDS
+
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
+then
+    # package raspberrypi-archive-keyring now manages the signing key
+    # of archive.raspberrypi.com, remove our bootstrap copy
+    rm /etc/apt/trusted.gpg.d/raspberrypi-archive-bootstrap.asc
+fi
 
 # restore diverted files
 mv /etc/default/ptpd.new /etc/default/ptpd
@@ -177,9 +183,12 @@ fi
 # Enable our custom systemd units
 systemctl enable uptime-ready       # save uptime in /run when ready
 systemctl enable walt-lldp-monitor  # notify LLDP neighbors to server
-if [ "$image_kind" = "rpi64" ]
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     systemctl enable boot-firmware.mount           # RPi OS requirement
+fi
+if [ "$image_kind" = "rpi64" ]
+then
     systemctl enable walt-vpn-auto-enroll.service  # as the name suggests
 fi
 
@@ -195,12 +204,6 @@ for timer_unit in $(ls /etc/systemd/system/timers.target.wants)
 do
     systemctl disable "$timer_unit"
 done
-
-if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
-then
-    # restore official apt repositories
-    mv /etc/apt/sources.list.official /etc/apt/sources.list
-fi
 
 # File policy-rc.d is available by default in debian images on docker hub
 # to prevent apt to start services immediately after they are installed.
