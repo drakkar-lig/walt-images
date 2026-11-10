@@ -9,6 +9,6 @@
     # on server too
     # -----------------------------------------
     "features": {
-        "nbfs2": "/usr/bin/activate-nbfs.sh"
+        "nbfs-281026": "/usr/bin/activate-nbfs.sh"
     }
 }
