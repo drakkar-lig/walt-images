@@ -1,5 +1,5 @@
 # -- 1st stage: builder_A, run with host arch
-FROM debian:bookworm as builder_A
+FROM debian:trixie as builder_A
 ARG OS_TYPE
 ARG OS_VERSION
 ENV MODEL "r5c"
