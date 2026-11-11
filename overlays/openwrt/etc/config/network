@@ -1,13 +1,15 @@
+# The WalT network interface (usually eth0) is configured by the
+# initramfs and must not be reset by netifd (this would break the NFS
+# root filesystem). Protocol 'walt-net' (see /lib/netifd/proto/walt-net.sh)
+# registers this interface and its address without modifying them.
+# Do not reference the WalT network device (eth0) in other sections
+# of this file.
+
 config interface 'loopback'
-    option ifname 'lo'
-    option proto 'static'
-    option ipaddr '127.0.0.1'
-    option netmask '255.0.0.0'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'
 
-config interface 'wan'
-    option ifname 'eth0'
-    option proto 'dhcp'
-
-config interface 'wan6'
-    option ifname 'eth0'
-    option proto 'dhcp6'
+config interface 'walt'
+	option proto 'walt-net'

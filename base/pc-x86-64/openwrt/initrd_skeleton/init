@@ -45,6 +45,18 @@ done
 # set default values
 : ${init:=/sbin/init}
 
+# load network drivers (see create_initramfs.sh)
+kmodloader /etc/modules-boot.d/ || true
+
+# wait for the boot network interface to appear (at most 5s)
+if [ -n "$BOOTIF" ]; then
+	mac=$(printf "%s\n" "$BOOTIF"|sed 's/^01-//;s/-/:/g')
+	for i in 1 2 3 4 5; do
+		grep -qi "$mac" /sys/class/net/*/address && break
+		sleep 1
+	done
+fi
+
 mount ${rootfstype:+-t} ${rootfstype} \
 			-o ${rootflags:-ro} \
 			${root} $sysroot

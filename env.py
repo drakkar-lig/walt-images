@@ -8,7 +8,7 @@ KERNEL_ARCHIVE = f"https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-{KERNEL_VE
 OS_VERSIONS = {
     'alpine': "3.18.4",
     'debian': "trixie",
-    'openwrt': "21.02.3",
+    'openwrt': "25.12.6",
     'mendel': "20211117215217",
 }
 
