@@ -1,12 +1,10 @@
 
-# WalT network interface: accept everything, since the node must
-# remain reachable by the WalT server (NFS root, ssh, walt requests
-# on TCP port 12346, etc.).
-# (the interface is managed by netifd protocol 'walt-net', see
-# /etc/config/network)
-config zone
+# walt-net interface: accept everything, since the node must remain
+# reachable by the WalT server (NFS root, ssh, walt requests on TCP
+# port 12346, etc.).
+# The network device of this zone is set at bootup by /etc/init.d/walt-net.
+config zone 'walt'
 	option name		walt
-	list   network		'walt'
 	option input		ACCEPT
 	option output		ACCEPT
 	option forward		REJECT

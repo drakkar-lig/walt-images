@@ -1,0 +1,52 @@
+#!/bin/sh /etc/rc.common
+#
+# Configure the firewall for the network interface
+# connected to walt-net (the WalT platform network).
+#
+# This interface is configured by the initramfs, since the root
+# filesystem is mounted over NFS through it, so netifd must not manage
+# it: when netifd claims a network device it brings it down, flushes
+# its addresses, or at least resets its ethtool link settings (which
+# restarts auto-negotiation on most physical NICs). Thus this interface
+# is not declared in /etc/config/network, and the firewall zone 'walt'
+# refers to the network device directly.
+# We detect this device at each boot, since it may vary depending on
+# the node.
+
+START=18
+
+get_walt_server_ip() {
+	local opt
+	for opt in $(cat /proc/cmdline)
+	do
+		case "$opt" in
+			walt.server.ip=*)
+				echo "${opt#*=}"
+				return
+				;;
+		esac
+	done
+}
+
+get_walt_net_device() {
+	local server_ip="$(get_walt_server_ip)"
+	[ -n "$server_ip" ] || return
+	ip -4 route get "$server_ip" | \
+		sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -n 1
+}
+
+boot() {
+	local dev="$(get_walt_net_device)"
+	if [ -z "$dev" ]
+	then
+		echo "walt-net: could not detect the walt-net network device." >&2
+		return 1
+	fi
+	# firewall: zone 'walt' accepts all traffic on this device
+	uci -q delete firewall.walt.device
+	uci add_list firewall.walt.device="$dev"
+	uci commit firewall
+	# note: dnsmasq cannot serve DHCP on this device since
+	# DHCP sections of /etc/config/dhcp must refer to a network
+	# interface declared in /etc/config/network.
+}

@@ -48,10 +48,8 @@ RUN ./scripts/feeds update -a && \
 # settings in the initramfs script and in menuconfig.
 # Point 3 is harder to solve, because the service starts a binary
 # called 'netifd' which reconfigures the interfaces when starting up,
-# by making use of ioctl() calls. So the walt network interface is
-# declared with the netifd protocol 'walt-net' (see
-# overlays/openwrt/lib/netifd/proto/walt-net.sh), which marks its device
-# and address as "external", so that netifd does not reset them.
+# by making use of ioctl() calls. So we just ensure the walt network
+# interface is not declared in /etc/config/network (see below).
 #
 # File build-files/openwrt.config contains only the changes comparing
 # to the default configuration (packages pulled as dependencies are
@@ -99,21 +97,22 @@ RUN tar xf /root/openwrt/bin/targets/x86/64/openwrt-x86-64-generic-rootfs.tar.gz
 WORKDIR /root/rootfs/dev
 ADD base/pc-x86-64/openwrt/dev-content.tar.gz .
 WORKDIR /root/rootfs
-# The network service (netifd) is kept enabled: the WalT network
-# interface is declared in /etc/config/network with protocol 'walt-net',
-# which prevents netifd from resetting it (this would break the NFS
-# root). See overlays/openwrt/lib/netifd/proto/walt-net.sh.
-# The firewall is kept enabled too, with a zone accepting all traffic
-# on this WalT interface (the node must remain reachable by the server).
-# And we ensure dnsmasq will never serve DHCP on this WalT interface.
-COPY base/pc-x86-64/openwrt/firewall-walt-zone \
-     base/pc-x86-64/openwrt/dhcp-walt-ignore /root/
-RUN cat /root/firewall-walt-zone >> etc/config/firewall && \
-    cat /root/dhcp-walt-ignore >> etc/config/dhcp
+# The network service (netifd) and the firewall are kept enabled.
+# However, the network interface connected to walt-net is configured by
+# the initramfs (NFS root) and must not be managed by netifd, so it is
+# not declared in /etc/config/network (see overlays/openwrt).
+# Instead, the firewall zone 'walt' (accepting all traffic, since the
+# node must remain reachable by the server) refers to its network
+# device, which is detected at bootup by /etc/init.d/walt-net.
+# (and since this interface is not declared in /etc/config/network,
+# dnsmasq cannot serve DHCP on walt-net.)
+COPY base/pc-x86-64/openwrt/firewall-walt-zone /root/
+RUN cat /root/firewall-walt-zone >> etc/config/firewall
 RUN mkdir -p etc/walt usr/bin run
 COPY overlays/generic overlays/openwrt overlays/ipxe \
      overlays/spec-ipxe \
      overlays/pc /root/rootfs/
+RUN ln -s ../init.d/walt-net etc/rc.d/S18walt-net
 WORKDIR /root/rootfs/boot
 RUN rm -f common-ipxe/start-generic-nbfs.ipxe  # kernel is too old for NBFS
 RUN rm -f System.map-lts config-lts vmlinuz-lts initramfs-lts

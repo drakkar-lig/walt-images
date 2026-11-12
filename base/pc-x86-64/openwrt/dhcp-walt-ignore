@@ -1,5 +1,0 @@
-
-# never serve DHCP on the WalT network (the WalT server does it)
-config dhcp 'walt'
-	option interface	'walt'
-	option ignore		'1'
