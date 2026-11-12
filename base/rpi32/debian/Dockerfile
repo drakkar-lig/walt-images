@@ -40,9 +40,16 @@ COPY overlays/generic overlays/debian \
 COPY --from=waltplatform/rpi-boot-builder \
             /opt/boot_files/cmdline.txt \
             /opt/boot_files/config.txt \
+            /opt/boot_files/config-64.txt \
             /opt/boot_files/u-boot-rpi-3-b.img \
             /opt/boot_files/u-boot-rpi-4-b.img \
+            /opt/boot_files/u-boot-rpi-4-b-64b.img \
     /rpi_fs/boot/common-rpi/
+# note: on rpi-4-b and rpi-400, the 32-bit kernel (rpi-v7) provided by
+# Raspberry Pi OS (trixie) lacks the ethernet driver (bcmgenet). So, like
+# Raspberry Pi OS, we use the 64-bit kernel (rpi-v8) on these models
+# (with the 32-bit userspace): the firmware loads the 64-bit u-boot
+# (see config-64.txt), which loads this kernel.
 # when using firmware network boot (boot without a SD card), dtb will be loaded
 # directly by firmware, and u-boot should not make a new TFTP request for it.
 # the firmware-provided dtb has custom modifications that u-boot cannot apply

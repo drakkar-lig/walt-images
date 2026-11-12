@@ -62,11 +62,15 @@ populate_rootfs_debian() {
     mkdir -p "$sources_dir"
     if [ "${arch}" = "armhf" ]
     then
+        # note: the image also uses the arm64 architecture for the 64-bit
+        # kernel of rpi-4-b and rpi-400 (see customize.sh), which is
+        # available in the archive.raspberrypi.com repository only.
         cat > "$sources_dir/raspbian.sources" << EOF
 Types: deb
 URIs: $RPIOS32_DEBIAN_MIRROR_URL
 Suites: $os_version
 Components: $RPIOS32_DEBIAN_SECTIONS
+Architectures: armhf
 EOF
     else
         cat > "$sources_dir/debian.sources" << EOF
