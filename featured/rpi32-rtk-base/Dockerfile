@@ -1,9 +1,11 @@
-FROM waltplatform/rpi32-debian:bookworm
+FROM waltplatform/rpi32-debian:latest
 
 COPY overlays/featured /
 WORKDIR /root
 # see installation steps at https://github.com/Stefal/rtkbase
-RUN apt update && apt install -y sudo wget lsb-release
+# note: we install polkitd here because the polkit rules installation
+# step of install.sh fails to detect it is missing on trixie.
+RUN apt update && apt install -y sudo wget lsb-release polkitd
 RUN wget https://raw.githubusercontent.com/Stefal/rtkbase/master/tools/install.sh -O install.sh && chmod +x install.sh
 RUN ./install.sh --user root --dependencies
 RUN ./install.sh --user root --rtkbase-release
