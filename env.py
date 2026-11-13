@@ -9,7 +9,6 @@ OS_VERSIONS = {
     'alpine': "3.18.4",
     'debian': "trixie",
     'openwrt': "25.12.6",
-    'mendel': "20211117215217",
 }
 
 LABELS_PER_BOARD_MODEL = {
@@ -25,7 +24,6 @@ LABELS_PER_BOARD_MODEL = {
     'rpi-400': { 'short': 'Rpi 400 keyboards', 'long': 'Raspberry Pi 400 keyboards' },
     'pc-x86-32': { 'short': '32-bit PC machines', 'long': '32-bit PC machines' },
     'pc-x86-64': { 'short': '64-bit PC machines', 'long': '64-bit PC machines' },
-    'coral-dev-board': { 'short': 'Coral Dev Boards', 'long': 'Google Coral Dev Boards' },
     'nanopi-r5c': { 'short': 'NanoPi R5C', 'long': 'FriendlyElec NanoPi R5C' },
 }
 
@@ -43,7 +41,6 @@ DEFAULT_IMAGE_PER_BOARD_MODEL = {
     # for them will remain the Debian bookworm image previously published.
     # 'pc-x86-32': 'debian.pc-x86-32',
     'pc-x86-64': 'debian.pc-x86-64',
-    'coral-dev-board': 'mendel.coral-dev-board',
     'nanopi-r5c': 'debian.nanopi-r5c',
 }
 
@@ -52,7 +49,6 @@ OS_TYPE_LABEL = {
     'debian': 'Debian OS',
     'alpine': 'Alpine OS',
     'openwrt': 'OpenWRT',
-    'mendel': 'Mendel Linux',
 }
 
 IMAGE_OVERALL_TEMPLATE = """
