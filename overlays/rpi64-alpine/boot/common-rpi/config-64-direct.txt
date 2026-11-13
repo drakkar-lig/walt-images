@@ -1,0 +1,38 @@
+# Enable serial pins on GPIO for debugging.
+# On 3B and later models, in the default setup, serial is handled by a
+# "mini-UART" which is not very reliable.
+# On earlier models it is handled by a reliable PL011 UART.
+# Activating the "mini-UART" also limits the videocore clock (the mini-UART relies on it).
+# Also read explanation about "dtoverlay=disable-bt" below.
+# (see https://www.raspberrypi.com/documentation/computers/configuration.html#mini-uart-and-cpu-core-frequency)
+
+enable_uart=1
+
+# On 3B and later models, the reliable PL011 UART exists too, but it is
+# used for communication with the bluetooth chip by default.
+# If bluetooth is not needed, you can uncomment the following dtoverlay line
+# which will disable bluetooth but let the PL011 UART manage the serial
+# communication instead of the unreliable "mini-UART".
+
+# dtoverlay=disable-bt
+
+# poe-fan (3b+,4b)
+# see https://github.com/raspberrypi/firmware/blob/master/boot/overlays/README#L1690
+
+dtparam=poe_fan_temp0=70000,poe_fan_temp0_hyst=3000
+dtparam=poe_fan_temp1=73000,poe_fan_temp1_hyst=3000
+dtparam=poe_fan_temp2=76000,poe_fan_temp2_hyst=2000
+dtparam=poe_fan_temp3=78000,poe_fan_temp3_hyst=2000
+
+# Let the firmware enable the watchdog before starting u-boot
+
+dtparam=watchdog=on
+
+# Ensure we boot the ARM core with 64bit mode (rpi3b+ & 4b)
+arm_64bit=1
+
+# Kernel & initrd conf
+# we just target the "kernel" and "initrd" symlinks
+# which should be set up appropriately in each /boot/<rpi-model>/ directory.
+kernel=kernel
+initramfs initrd followkernel

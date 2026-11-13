@@ -19,6 +19,13 @@ case "$image_kind" in
                   raspberrypi-bootloader \
                   raspberrypi-utils $PACKAGES"
         ;;
+    "rpi64")
+        # aarch64 image for models 3B+, 4B and 5B, booted directly
+        # by the firmware
+        PACKAGES="linux-rpi dtc \
+                  raspberrypi-bootloader \
+                  raspberrypi-utils $PACKAGES"
+        ;;
     "pc-x86-32"|"pc-x86-64")
         PACKAGES="linux-lts $PACKAGES"
         ;;
