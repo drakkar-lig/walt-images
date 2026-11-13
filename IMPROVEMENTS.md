@@ -157,7 +157,56 @@ test passes. The `mount.nbfs` client in `overlays/mount.nbfs.amd64` was
 last updated in commit `0fcec1e` (2026-11-10). The bug may be in that
 client or in the server's nbfsd. Not yet analysed.
 
-## 10. Housekeeping
+## 10. walt server: check the switch port before turning PoE off
+
+This item is for walt-python-packages, not walt-images.
+
+**Problem.** The walt database (`walt device tree`) may still record an old
+device on a switch port after that device was unplugged. If a different
+node is now plugged into the same port, turning PoE off for the old device
+cuts the power of the new one. This happens with:
+
+- `walt node reboot --hard <old-node>`
+- powersave, when the old device was a free node and its
+  `powersave.timeout` expires
+
+**Seen on 2026-11-13.** `walt device tree` still showed `node-dd68a7`, a
+free node unplugged long ago, on `switch-8efa0f` port 5. `nanopi` had been
+plugged into that port in the morning. When the powersave timeout of
+`node-dd68a7` expired, the server turned PoE off on port 5 and so powered
+`nanopi` off. `walt-lldp-monitor` (in the new images) corrects the
+topology once the node has booted, but the node may not have finished
+booting, or its LLDP daemon may not have seen the switch yet.
+
+**Proposal.** Just before turning a port's PoE off, read the switch
+forwarding table (FDB) for that port through SNMP:
+
+- if a MAC address other than the expected node's is learned on the port,
+  do not power it off. Mark the topology entry as obsolete
+  (`forget_topology_entry_for_mac()`, as `node_bootup_event()` already does
+  in `powersave.py`), and log or report an error that suggests running
+  `walt device rescan`.
+- if the expected MAC is learned, go ahead.
+- if no MAC is learned, the device may be idle and its FDB entry may have
+  expired (often after about 5 minutes). The server could either keep the
+  current behaviour or ping the node first. For powersave, the safest
+  choice is to skip the power-off.
+
+**Where in the code** (`server/walt/server/`):
+
+- `processes/main/poe.py`: `PoEManager.wf_nodes_set_poe()` /
+  `_wf_sw_port_set_poe()` (runs `walt-set-poe`). A check step here would
+  cover both callers when `poe_status` is False.
+- callers: `processes/main/nodes/powersave.py` (`_check()`,
+  `_wf_toggle_power_on_nodes()`) and `processes/main/nodes/reboot.py`
+  (`wf_poe_reboot()`, `wf_poe_poweroff()`).
+- `snmp/bridge.py`: `VLANCapableBridge.get_macs_per_port()` already reads
+  `dot1qTpFdbPort` / `dot1qTpFdbStatus` (learned entries). Note that FDB
+  port numbers are bridge port numbers (`dot1dBasePort`). They may need
+  mapping (`dot1dBasePortIfIndex`) to the port numbering used for
+  LLDP/PoE (see the port correlation logic in `snmp/poe.py`).
+
+## 11. Housekeeping
 
 - Remove the Raspberry Pi 400 from the supported boards. It was added
   around 2020, at the request of a potential user, as an alternative while
