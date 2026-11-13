@@ -327,11 +327,15 @@ All commands should return a non-zero exit code on failure.
                   if res is True:
                       return 0
                   return res
+              # plumbum reads the positional arguments with
+              # inspect.getfullargspec(), which ignores __wrapped__
+              wrapped_main.__signature__ = inspect.signature(main)
               cls.main = wrapped_main
   ```
-  (`functools.wraps` keeps the signature visible to plumbum, which uses it
-  for the positional arguments, their validators such as
-  `IMAGE_CLONE_URL`, and the help.) The `False`/`True` handling of
+  Setting `__signature__` is required: without it, plumbum sees
+  `(*args, **kwargs)`, so argument validators (such as `IMAGE_CLONE_URL`)
+  are skipped and the help is wrong. This sketch was tested with plumbum
+  2.0.2 (exit codes, validators, too many arguments, help). The `False`/`True` handling of
   `wrap.py` can then be removed. Check the commands whose `main()` is not
   defined in a `WalTApplication` subclass, and add a test such as:
   `walt image clone docker:waltplatform/does-not-exist:latest x; [ $? -eq 1 ]`.
