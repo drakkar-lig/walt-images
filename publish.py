@@ -19,9 +19,12 @@ def get_node_models_of_image(image):
 def get_base_image_description(os_type, model_type, desc_type):
     os_type_label = env.OS_TYPE_LABEL[os_type]
     board_models_label = env.LABELS_PER_BOARD_MODEL[model_type][desc_type]
-    return env.BASE_IMAGE_SHORT_DESC_TEMPLATES[desc_type].format(
+    desc = env.BASE_IMAGE_SHORT_DESC_TEMPLATES[desc_type].format(
             os_type=os_type_label,
             board_models=board_models_label)
+    if desc_type == 'long':
+        desc += env.BASE_IMAGE_LONG_DESC_NOTES.get(f"{os_type}.{model_type}", "")
+    return desc
 
 def get_featured_image_description(image_name, desc_type):
     return env.FEATURED_IMAGE_SHORT_DESC_TEMPLATES[image_name][desc_type]

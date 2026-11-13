@@ -74,6 +74,23 @@ BASE_IMAGE_SHORT_DESC_TEMPLATES = {
     'long': "This image is the {os_type} WalT image for {board_models}."
 }
 
+# additional notes appended to the long description of some base images
+BASE_IMAGE_LONG_DESC_NOTES = {
+    'debian.rpi32': """
+Note: on Raspberry Pi 4B boards, the 32-bit Raspberry Pi OS kernel lacks
+the ethernet driver, so this image boots the 64-bit kernel (package
+`linux-image-rpi-v8:arm64`) on these boards, with the same 32-bit (armhf)
+userspace. Thus the image declares both armhf and arm64 dpkg
+architectures, and apt may list some `:arm64` packages. The apt sources
+of Raspbian (`/etc/apt/sources.list.d/raspbian.sources`) are restricted to
+armhf, and arm64 packages come from archive.raspberrypi.com.""",
+    'alpine.rpi32': """
+Note: this armv7 image supports Raspberry Pi models 2B, 3B and 3B+
+(see rpi64-alpine for models 3B+, 4B and 5B).""",
+    'alpine.rpi64': """
+Note: this aarch64 image supports Raspberry Pi models 3B+, 4B and 5B.""",
+}
+
 FEATURED_IMAGE_SHORT_DESC_TEMPLATES = {
     'rpi32-sd-update': {
         'short': "WALT image for automatic RPi SD updates",
