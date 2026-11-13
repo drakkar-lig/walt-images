@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import sys, subprocess
+import sys, subprocess, re
 from pathlib import Path
 
 if len(sys.argv) < 2:
@@ -50,6 +50,43 @@ def get_rpi_boot_builder():
     return image
 
 
+def get_descriptor_of_image(image_name):
+    """Return the build descriptor ('<os>.<model>' or 'featured.<name>')
+       of an image of this repository, or None."""
+    if Path(f"featured/{image_name}/Dockerfile").exists():
+        return f"featured.{image_name}"
+    if "-" in image_name:
+        model_type, os_type = image_name.rsplit("-", 1)
+        if Path(f"base/{model_type}/{os_type}/Dockerfile").exists():
+            return f"{os_type}.{model_type}"
+    return None
+
+
+def ensure_local_parent_images(dockerfile):
+    """Images such as featured/rpi32-rtk-base are based on another image
+       of this repository (e.g., 'FROM waltplatform/rpi32-debian:latest').
+       If this parent image is not available locally, docker would silently
+       pull the version published on the docker hub, which may be outdated.
+       So we build it first in this case."""
+    text = Path(dockerfile).read_text()
+    for image_name in re.findall(r"^FROM\s+waltplatform/([^\s:]+):latest\b",
+                                 text, re.MULTILINE):
+        descriptor = get_descriptor_of_image(image_name)
+        if descriptor is None:
+            continue
+        image = f"waltplatform/{image_name}:latest"
+        inspect = subprocess.run(
+                ["docker", "image", "inspect", "--format", "{{.Created}}",
+                 image], capture_output=True, text=True)
+        if inspect.returncode == 0:
+            created = inspect.stdout.strip()[:19].replace("T", " ")
+            print(f"Using local parent image {image} (built {created}).")
+            print(f"Run 'make build.{descriptor}' first to rebuild it.")
+            continue
+        print(f"Parent image {image} is missing, building it first.")
+        run(f"{sys.executable} build.py {descriptor}", check=True)
+
+
 def get_build_args(dockerfile):
     if "RPI_BOOT_BUILDER" in Path(dockerfile).read_text():
         return f" --build-arg RPI_BOOT_BUILDER={get_rpi_boot_builder()}"
@@ -62,6 +99,7 @@ if image_descriptor[0] == 'featured':
     name = image_descriptor[1]
     src_dir = f"featured/{name}"
     dockerfile = f"{src_dir}/Dockerfile"
+    ensure_local_parent_images(dockerfile)
     build_args = f'--build-arg SRC_DIR="{src_dir}"'
     build_args += get_build_args(dockerfile)
     run(f'nice docker build {build_args} \

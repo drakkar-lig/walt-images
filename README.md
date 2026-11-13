@@ -28,6 +28,11 @@ To use other boot files, update the submodule commit; uncommitted changes
 in `walt-node-boot/rpi` are also taken into account (image tag
 `<commit>-dirty`).
 
+Some featured images are based on a base image of this repository (e.g.,
+`rpi32-rtk-base` is based on `rpi32-debian`). When building such an image
+alone, the local version of the base image is used, or, if missing, it is
+built first. Run `make` (or build the base image first) to rebuild it.
+
 ---
 ![walt animated use case](https://walt-project.liglab.fr/-/wikis/walt.gif)
 
