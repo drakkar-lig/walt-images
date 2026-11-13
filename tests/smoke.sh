@@ -17,6 +17,7 @@
 #
 # options:
 #   -r   boot the node back on its previous image at the end
+#        (or release it, if it was a free node)
 #   -f   proceed even if other nodes use the WalT image (they will reboot)
 #   -n   WalT image name to use (default: smoke-<image>)
 #   -t   timeout in seconds for the node bootup (default: 600)
@@ -56,21 +57,27 @@ info() {
     echo "--- $*"
 }
 
-walt_node_show() {
-    # columns: name type model image ip netsetup booted
-    walt node show --all | sed 's/\x1b\[[0-9;]*m//g'
+# print "<node> <image>" lines
+# (in the output of "walt node show", the table of free nodes has no
+# image column: we print "-" as their image)
+walt_node_images() {
+    walt node show --all | sed 's/\x1b\[[0-9;]*m//g' | awk '
+        /currently free/ { free = 1 }
+        $2 == "physical" || $2 == "virtual" {
+            print $1, (free ? "-" : $4)
+        }'
 }
 
 get_node_image() {
-    walt_node_show | awk -v node="$1" '$1 == node { print $4; exit }'
+    walt_node_images | awk -v node="$1" '$1 == node { print $2; exit }'
 }
 
 # nodes (other than $2) using image $1
 # (note: "walt node show --all" also lists the nodes of other users, so
 # their image names may be the same as ours.)
 get_other_nodes_of_image() {
-    walt_node_show | awk -v image="$1" -v node="$2" \
-        '$4 == image && $1 != node { printf "%s ", $1 }'
+    walt_node_images | awk -v image="$1" -v node="$2" \
+        '$2 == image && $1 != node { printf "%s ", $1 }'
 }
 
 prev_image="$(get_node_image "$node")"
@@ -137,13 +144,20 @@ then
     failures=$((failures + 1))
 fi
 
+if [ "$prev_image" = "-" ]
+then
+    restore_desc="release $node (it was a free node)"
+    restore_cmd="walt node release $node"
+else
+    restore_desc="boot $node back on its previous image"
+    restore_cmd="walt node boot $node $prev_image"
+fi
 if [ "$restore" = 1 ]
 then
-    info "booting $node back on $prev_image"
-    walt node boot "$node" "$prev_image"
+    info "$restore_desc"
+    $restore_cmd
 else
-    info "to boot $node back on its previous image:" \
-         "walt node boot $node $prev_image"
+    info "to $restore_desc: $restore_cmd"
 fi
 
 info "$passes passed, $failures failed"
