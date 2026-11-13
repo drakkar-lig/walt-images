@@ -72,12 +72,13 @@ rpi-v8 kernel is 25.6 MiB.
 
 ## 3. Other rpi32 images on Pi 4
 
-- `rpi32-alpine` does not support the Pi 4: `rpi-4-b` is not in its node
-  models, and `customize.sh` removes `/boot/rpi-4-b` (the arm32v6 Alpine
-  kernel lacks the BCMGENET ethernet driver). It still copies
-  `u-boot-rpi-4-b.img` for nothing. Supporting the Pi 4 (armv7 or aarch64
-  Alpine, or the same 64-bit U-Boot and kernel approach as rpi32-debian)
-  can be done as part of the Alpine upgrade.
+- `rpi32-alpine`: **done** with the Alpine upgrade (commits `0423722`,
+  `2e36181`). The armv7 Alpine kernel also lacks the BCMGENET ethernet
+  driver, so `rpi32-alpine` (now armv7, models 2B, 3B and 3B+) keeps
+  excluding the Pi 4, and the new `rpi64-alpine` image (aarch64, models
+  3B+, 4B and 5B, booted directly by the firmware) supports it. The Pi 1
+  models were dropped: recent Alpine versions provide a single `linux-rpi`
+  kernel per architecture, and the armhf one only supports the Pi 1.
 - `rpi32-sd-update`: **done** (commit `9a8a292`). The policy is to use a SD
   card on older models (<= 3B) and no SD card on newer ones (>= 3B+), so
   this image now only lists models up to 3B (its label was inherited from
@@ -97,12 +98,19 @@ initramfs).
 
 ## 5. Image metadata
 
-- Add image architecture labels: a declared architecture per image instead
-  of relying on the node model list. This was deferred during the migration.
-- Note that rpi32-debian is now multi-arch: armhf userland plus an arm64
-  kernel package on Pi 4/400, with `Architectures: armhf` restricting
-  `raspbian.sources`. Document this somewhere visible to users, because
-  `apt` will show `:arm64` packages.
+- Architecture labels: **rejected**. Declaring the real ARM platform in the
+  image metadata (tested with `docker build --platform`) works for clone,
+  shell, build and boot, but podman then prints "image platform
+  (linux/arm64) does not match the expected platform (linux/amd64)" in
+  `walt image shell` and `walt image build`. Newer servers could pass
+  `--platform` to podman, but older servers would show the warnings, and
+  multi-stage user Dockerfiles would be affected. So images keep the amd64
+  platform set by `docker build`, and the node model list remains the
+  reference.
+- Multi-arch documentation: **done** (commit `fd91b6d`). The Docker Hub long
+  description of rpi32-debian explains its multi-arch setup (armhf userland
+  plus an arm64 kernel on Pi 4, `raspbian.sources` restricted to armhf), and
+  the alpine rpi images list their supported models.
 
 ## 6. Build tooling
 
@@ -275,4 +283,32 @@ let it retry for longer.)
 - `rpi32-rtk-base`: report upstream that rtkbase's
   `install_polkit_rules.sh` misdetects polkit through `dpkg-query -W`.
   The image works around this by installing `polkitd` explicitly.
-- Upgrade Alpine (deferred during the trixie migration).
+- **Done** (commits `0423722`, `2e36181`). Upgrade Alpine (deferred during the trixie
+  migration): 3.18.4 -> 3.24.4. mkinitfs now builds a usr-merged
+  initramfs and silently produced an incomplete one (no root mount)
+  because of our `/sbin/mount.nbfs` symlink; fixed, and mkinitfs failures
+  now abort the build.
+- The rpi-2-b node did not reboot automatically after a kernel panic
+  ("Mounting root: failed", then "SMP: failed to stop secondary CPUs"). A
+  `panic=<seconds>` kernel parameter might help, to be checked.
+
+## 14. walt client: exit codes and failures
+
+walt commands may return exit code 0 when something failed, which breaks
+scripts (e.g., `tests/smoke.sh`, which now works around both cases below).
+All commands should return a non-zero exit code on failure.
+
+- `walt image clone` returned 0 when the server raised an exception: on
+  2026-11-13, cloning a newly built image from the docker daemon
+  (`docker:waltplatform/rpi32-alpine:latest`) failed with
+  `podman.errors.exceptions.ImageNotFound: 404 ... image not known`. The
+  client printed the error but exited 0. The failure itself is a server bug:
+  the clone workflow (`save_initial_images` / `remove_server_image` steps)
+  tried to tag or remove `docker.io/waltplatform/rpi32-alpine:latest` in
+  podman before the `pull_image` step, but this new image was not in
+  podman's storage yet. After a manual `podman pull
+  docker-daemon:waltplatform/rpi32-alpine:latest`, the clone succeeded.
+  Probably the server's image store believed the image was already there
+  (the docker daemon images are synced in `processes/main/images/store.py`).
+- `walt node wait --timeout <t>` did not return in some cases (node not
+  booting).
