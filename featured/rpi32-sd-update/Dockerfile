@@ -14,3 +14,8 @@ RUN systemctl enable rpi-sd-update && \
     apt install -y gdisk fdisk
 # allow apt install to start services (on node, or in walt image shell)
 RUN rm /usr/sbin/policy-rc.d
+
+# This image updates the boot files of the SD card of older models (<= 3B),
+# which boot from their SD card. Newer models (>= 3B+) boot without a SD
+# card, so unlike rpi32-debian, this image does not list them.
+LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b

@@ -79,7 +79,9 @@ FEATURED_IMAGE_SHORT_DESC_TEMPLATES = {
         'short': "WALT image for automatic RPi SD updates",
         'long': """\
 This image allows to automatically update the network bootloader and firmware files
-stored on the SD card of Raspberry Pi nodes."""
+stored on the SD card of Raspberry Pi nodes.
+It is intended for models up to 3B, which boot from their SD card (models 3B+
+and later boot without a SD card)."""
     },
     'rpi32-serial-monitor': {
         'short': "WALT image for monitoring the serial line of another board",
