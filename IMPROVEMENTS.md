@@ -138,26 +138,50 @@ release.
 - `pc-x86-64-openwrt`: document how to regenerate `build-files/kernel-config`
   (the procedure is currently only in a Dockerfile comment).
 
-## 9. Known issue found during tests: rename on an nbfs root
+## 9. nbfs read-write mode (network-persistent boot mode)
 
-On `apu8-426` (pc-x86-64, network-persistent mode), the trixie pc-x86-64
-image mounts its root filesystem with nbfs (`fuse.nbfs`). There, renaming a
-file loses it:
+The rename bug found on 2026-11-13 is fixed in nbfs commit `5e333c6` on
+`etienne-dev`, which is deployed on the dev server. The cause was the SQL
+UPDATE of `db_rename_entry()` placed inside an `assert()`, which is removed
+with `-DNDEBUG`. Remaining issues found while debugging it:
 
-```sh
-echo b > g.tmp; mv g.tmp g   # mv returns 0
-ls                           # neither g.tmp nor g is listed
-cat g                        # "Out of streams resources" (ENOSR)
-```
+- **State left by the buggy server.** Mounts used in rw mode before the fix
+  keep stale lookup rows in `/var/lib/nbfsd/nbfsd-v3.db`. On `apu8-426`,
+  after the fixed server was deployed, the node's nbfs client died during
+  boot and during `apt update` (root fs gone: "Transport endpoint is not
+  connected"). Expiring the mount (`update mounts set expiry = 0 where
+  mount_id = <id>`, with nbfsd stopped, then letting nbfsd clean it up) fixed
+  it. The client-side crash itself was not root-caused, since no console
+  was available. A virtual node in network-persistent mode would make this
+  easier. The rw mounts of the virtual nodes `vn-server`, `vn-server-trixie`,
+  `vn-server-trixie2` and `vn-server-bookworm-old` were also used with
+  the buggy server and may need the same reset.
+- **nbfsd aborts on a missing lookup row.** `reverse_lookup()` calls
+  `abort()` when an inode has no row, and `get_relative_path()` does the
+  same when it cannot walk a path back. This kills the daemon for all
+  clients. A per-request error such as ESTALE would be more robust.
+- **Trash cleanup and inode numbers.** `clear_trash_content()` (called when
+  a mount is opened) deletes lookup and request rows by inode number only
+  (`entry_ino` is global, not per mount). Lookup inode numbers are sqlite
+  rowids without AUTOINCREMENT, so they are reused after rows are deleted,
+  for example when a mount expires. A trash entry left over from an expired
+  mount could then discard rows that belong to another file or mount.
+  Possible fixes: restrict the discards to the mount being opened, or clear
+  the trash when the mount's cache expires.
 
-`rm -rf` of the directory then fails with "Directory not empty". As a
-consequence, `apt update` fails (its "store" method renames the downloaded
-index files). With the same node on the bookworm image (NFS root), the same
-test passes. The `mount.nbfs` client in `overlays/mount.nbfs.amd64` was
-last updated in commit `0fcec1e` (2026-11-10). The bug may be in that
-client or in the server's nbfsd. Not yet analysed.
+## 10. walt server: one stuck node connection blocks the hub
 
-## 10. walt server: check the switch port before turning PoE off
+On 2026-11-13, the `server-hub` process (pid 2307) was blocked in a
+blocking `recv()` on a connection from `apu8-426` (192.168.222.47 to port
+12345). The node had opened the connection and then lost its root
+filesystem. All walt commands failed with "Network connection to WalT
+server failed!", and nodes could not report that they had booted, so boot
+timeouts caused reboot loops. Killing that TCP connection
+(`ss -K dst 192.168.222.47 dport = <port>`) unblocked it. The hub should
+use non-blocking reads or a timeout when it reads the first message of a
+new connection.
+
+## 11. walt server: check the switch port before turning PoE off
 
 This item is for walt-python-packages, not walt-images.
 
@@ -206,7 +230,7 @@ forwarding table (FDB) for that port through SNMP:
   mapping (`dot1dBasePortIfIndex`) to the port numbering used for
   LLDP/PoE (see the port correlation logic in `snmp/poe.py`).
 
-## 11. Housekeeping
+## 12. Housekeeping
 
 - Remove the Raspberry Pi 400 from the supported boards. It was added
   around 2020, at the request of a potential user, as an alternative while
