@@ -299,17 +299,47 @@ walt commands may return exit code 0 when something failed, which breaks
 scripts (e.g., `tests/smoke.sh`, which now works around both cases below).
 All commands should return a non-zero exit code on failure.
 
-- `walt image clone` returned 0 when the server raised an exception: on
-  2026-11-13, cloning a newly built image from the docker daemon
-  (`docker:waltplatform/rpi32-alpine:latest`) failed with
-  `podman.errors.exceptions.ImageNotFound: 404 ... image not known`. The
-  client printed the error but exited 0. The failure itself is a server bug:
-  the clone workflow (`save_initial_images` / `remove_server_image` steps)
-  tried to tag or remove `docker.io/waltplatform/rpi32-alpine:latest` in
-  podman before the `pull_image` step, but this new image was not in
-  podman's storage yet. After a manual `podman pull
-  docker-daemon:waltplatform/rpi32-alpine:latest`, the clone succeeded.
-  Probably the server's image store believed the image was already there
-  (the docker daemon images are synced in `processes/main/images/store.py`).
+- `walt image clone` returned 0 when the server raised an exception (see
+  item 15).
 - `walt node wait --timeout <t>` did not return in some cases (node not
   booting).
+
+## 15. walt server: clone failures with a stale image store
+
+On 2026-11-13, `walt image clone --force docker:waltplatform/rpi32-alpine:latest
+smoke-rpi32-alpine` failed with `podman.errors.exceptions.ImageNotFound:
+404 ... image not known`, and the failure deleted the user's existing image.
+
+**Trigger.** `docker.io/waltplatform/rpi32-alpine:latest` had been removed
+from podman with `podman rmi`, outside of walt. The server's image store
+(main process, `self.images`, and the `images` db table) still listed it.
+
+**Bug 1: the clone workflow trusts the image store.** `perform_clone()`
+(`processes/blocking/images/clone.py`) computes `existing_server_image`
+with `image_store.__contains__()`, so it selected a workflow that starts by
+saving and removing this server image. `save_initial_images()` then failed
+to tag it (`registry.tag()` -> `ll_podman_tag()` -> 404). The store is
+resynced from podman only when an image is missing from the store
+(`get_images_per_fullnames()`), not when the store lists an image podman
+does not have. Possible fixes: check podman (not the store) when computing
+the workflow, or resync the store first; and make `save_initial_images()`
+and `remove_server_image()` tolerate a missing image.
+
+**Bug 2: the failure cleanup lost the user's image.** In
+`WorkflowCleaner.cleanup()`, on failure:
+1. it untags `ws_image_fullname` (`eduble/smoke-rpi32-alpine:latest`),
+   which was the user's existing image, already saved to a backup tag;
+2. it untags `remote_image_fullname` with `ignore_missing=True`, but
+   `image_exists()` returned True because of the stale `names_cache` of the
+   registry, so podman raised a 404 again;
+3. this second exception aborted the cleanup, so the backups were never
+   restored: the user's image was gone (a node was booting it), and the
+   backup stayed in podman as `localhost/walt/clone-temp:a68d5ec5`.
+
+The cleanup should be robust to errors in each step (restore the backups
+whatever happens), and `untag(..., ignore_missing=True)` should not rely on
+`names_cache` alone. `names_cache` should also be invalidated when podman
+reports the image is missing.
+
+After `podman pull docker-daemon:waltplatform/rpi32-alpine:latest`, the
+server image existed again and the clone succeeded.
