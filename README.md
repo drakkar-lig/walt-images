@@ -36,6 +36,33 @@ built first. Run `make` (or build the base image first) to rebuild it.
 The versions of some external software installed in the images (k3s,
 RTKBase) are pinned in `env.py` (`PINNED_VERSIONS`).
 
+## Image architecture
+
+The images built for ARM boards (Raspberry Pi, NanoPi) declare platform
+`linux/amd64` in their metadata (`pc-x86-32-alpine` declares `linux/386`,
+inherited from its base image), even if their content is ARM. This is
+intended: `build.py` does not pass option `--platform` to `docker build`,
+which records the platform of the build host, even if the last stage of the
+Dockerfile is `FROM --platform=linux/arm64 scratch` for instance.
+
+This is consistent with the meaning of the image platform: it tells which
+docker hosts can run the image as a container. WalT nodes never run
+containers of these images, they boot them over the network. The only
+docker hosts which run containers of a WalT image are WalT servers (for
+`walt image shell`, and for the `RUN` instructions of `walt image build`),
+and they are `linux/amd64` machines (ARM binaries run there through
+qemu-user emulation).
+
+We tried to declare the real platform (`linux/arm/v6`, `linux/arm64`, etc.).
+It works for cloning, booting, `walt image shell` and `walt image build`,
+but podman then prints warnings such as `image platform (linux/arm64) does
+not match the expected platform (linux/amd64)`. A walt server could pass
+option `--platform` to podman to avoid them, but older walt servers would
+still print them, and multi-stage user Dockerfiles in `walt image build`
+would be affected. So the architecture of an image is given by its node
+models (label `walt.node.models`), and by its description on the docker hub
+when useful (see `BASE_IMAGE_LONG_DESC_NOTES` in `env.py`).
+
 ## Testing images
 
 `tests/smoke.sh <image> <node>` boots a WalT node on a locally built image
