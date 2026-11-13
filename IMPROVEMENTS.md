@@ -72,8 +72,8 @@ rpi-v8 kernel is 25.6 MiB.
 
 ## 3. Other rpi32 images on Pi 4
 
-- `rpi32-alpine`: **done** with the Alpine upgrade (commits `0423722`,
-  `2e36181`). The armv7 Alpine kernel also lacks the BCMGENET ethernet
+- `rpi32-alpine`: **done** with the Alpine upgrade (commits `f6449ef`,
+  `f82c7d5`). The armv7 Alpine kernel also lacks the BCMGENET ethernet
   driver, so `rpi32-alpine` (now armv7, models 2B, 3B and 3B+) keeps
   excluding the Pi 4, and the new `rpi64-alpine` image (aarch64, models
   3B+, 4B and 5B, booted directly by the firmware) supports it. The Pi 1
@@ -106,8 +106,9 @@ initramfs).
   `--platform` to podman, but older servers would show the warnings, and
   multi-stage user Dockerfiles would be affected. So images keep the amd64
   platform set by `docker build`, and the node model list remains the
-  reference.
-- Multi-arch documentation: **done** (commit `fd91b6d`). The Docker Hub long
+  reference. This is documented in `README.md` ("Image architecture",
+  commit `d78490c`).
+- Multi-arch documentation: **done** (commit `7416415`). The Docker Hub long
   description of rpi32-debian explains its multi-arch setup (armhf userland
   plus an arm64 kernel on Pi 4, `raspbian.sources` restricted to armhf), and
   the alpine rpi images list their supported models.
@@ -283,7 +284,7 @@ let it retry for longer.)
 - `rpi32-rtk-base`: report upstream that rtkbase's
   `install_polkit_rules.sh` misdetects polkit through `dpkg-query -W`.
   The image works around this by installing `polkitd` explicitly.
-- **Done** (commits `0423722`, `2e36181`). Upgrade Alpine (deferred during the trixie
+- **Done** (commits `f6449ef`, `f82c7d5`). Upgrade Alpine (deferred during the trixie
   migration): 3.18.4 -> 3.24.4. mkinitfs now builds a usr-merged
   initramfs and silently produced an incomplete one (no root mount)
   because of our `/sbin/mount.nbfs` symlink; fixed, and mkinitfs failures
