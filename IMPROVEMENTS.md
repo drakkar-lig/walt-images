@@ -58,6 +58,8 @@ scratch clone.
 
 ## 2. Test the rpi32-debian boot on all Raspberry Pi models
 
+**Done**: the 3B+ was tested with `tests/smoke.sh` on 2026-11-13.
+
 The Pi 4/400 now boots the arm64 `linux-image-rpi-v8` kernel through the
 64-bit U-Boot (`config-64.txt`, `booti`), with the armhf userland. This was
 tested on a Pi 4B, together with a non-regression test on a Pi 2B. A 3B+
@@ -76,17 +78,11 @@ rpi-v8 kernel is 25.6 MiB.
   `u-boot-rpi-4-b.img` for nothing. Supporting the Pi 4 (armv7 or aarch64
   Alpine, or the same 64-bit U-Boot and kernel approach as rpi32-debian)
   can be done as part of the Alpine upgrade.
-- `rpi32-sd-update` copies all of `/opt/boot_files` from the builder image,
-  and writes walt-node-boot's `config.txt` on the SD card. For the Pi 4,
-  this `config.txt` still selects the 32-bit U-Boot (`arm_64bit=0`,
-  `u-boot-rpi-4-b.img`). A Pi 4 that boots from its SD card (instead of
-  the network boot programmed in its EEPROM) thus cannot boot rpi32-debian
-  anymore, since rpi32-debian now uses an arm64 kernel on the Pi 4 (and
-  this includes the rpi32-sd-update image itself). It never could boot
-  rpi64-debian, which has no U-Boot for the Pi 4. Selecting the 64-bit
-  U-Boot in walt-node-boot's `config.txt` would fix rpi32-debian, but
-  would break custom images with a 32-bit kernel on such nodes. To be
-  decided.
+- `rpi32-sd-update`: **done** (commit `9a8a292`). The policy is to use a SD
+  card on older models (<= 3B) and no SD card on newer ones (>= 3B+), so
+  this image now only lists models up to 3B (its label was inherited from
+  rpi32-debian). Thus the 32-bit U-Boot that walt-node-boot's `config.txt`
+  selects for the Pi 4 on SD cards does not matter.
 
 ## 4. Harmonize the OpenWrt-based images
 
