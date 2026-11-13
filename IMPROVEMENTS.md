@@ -70,34 +70,34 @@ rpi-v8 kernel is 25.6 MiB.
 
 ## 3. Other rpi32 images on Pi 4
 
-- `rpi32-alpine` still takes `u-boot-rpi-4-b.img`, the 32-bit U-Boot.
-  Check whether its armv7 kernel has `CONFIG_BCMGENET` (the trixie Debian
-  rpi-v7 kernel does not). If not, use the same 64-bit U-Boot and kernel
-  approach as rpi32-debian. Can be done as part of the Alpine upgrade.
-- `rpi32-sd-update`: check which U-Boot files it now gets from the rebuilt
-  builder image.
+- `rpi32-alpine` does not support the Pi 4: `rpi-4-b` is not in its node
+  models, and `customize.sh` removes `/boot/rpi-4-b` (the arm32v6 Alpine
+  kernel lacks the BCMGENET ethernet driver). It still copies
+  `u-boot-rpi-4-b.img` for nothing. Supporting the Pi 4 (armv7 or aarch64
+  Alpine, or the same 64-bit U-Boot and kernel approach as rpi32-debian)
+  can be done as part of the Alpine upgrade.
+- `rpi32-sd-update` copies all of `/opt/boot_files` from the builder image,
+  and writes walt-node-boot's `config.txt` on the SD card. For the Pi 4,
+  this `config.txt` still selects the 32-bit U-Boot (`arm_64bit=0`,
+  `u-boot-rpi-4-b.img`). A Pi 4 that boots from its SD card (instead of
+  the network boot programmed in its EEPROM) thus cannot boot rpi32-debian
+  anymore, since rpi32-debian now uses an arm64 kernel on the Pi 4 (and
+  this includes the rpi32-sd-update image itself). It never could boot
+  rpi64-debian, which has no U-Boot for the Pi 4. Selecting the 64-bit
+  U-Boot in walt-node-boot's `config.txt` would fix rpi32-debian, but
+  would break custom images with a 32-bit kernel on such nodes. To be
+  decided.
 
 ## 4. Harmonize the OpenWrt-based images
 
-**Done** for the firewall zone (commit `d766fb5`, tested on a pc-x86-64
-virtual node and an rpi-4-b node). The NFS mount retry was not ported to chirpstack.
+**Done** (commit `d766fb5`): like `pc-x86-64-openwrt` (commit `3642fd0`),
+the chirpstack image now keeps the firewall enabled and
+`/etc/init.d/walt-net` adds the walt-net device to firewall zone `walt`.
 
-`pc-x86-64-openwrt` now leaves the walt-net interface alone (commit
-`3642fd0`):
-
-- `/etc/config/network` has the loopback only.
-- `/etc/init.d/walt-net` adds the device to firewall zone `walt` at bootup.
-- netifd and the firewall remain enabled.
-
-`featured/rpi32-chirpstack` still removes the firewall and dnsmasq rc
-scripts instead. Reusing the same overlay would:
-
-- give both images the same behaviour;
-- let users enable the OpenWrt firewall or add more interfaces in the
-  chirpstack image.
-
-The initramfs NFS mount retry (commit `4e834ac`) might also be useful there
-on slow-negotiating links.
+Remaining: the initramfs NFS mount retry of `pc-x86-64-openwrt` (commit
+`4e834ac`) might also be useful for chirpstack on slow-negotiating links
+(but on rpi boards the kernel mounts the NFS root itself, without an
+initramfs).
 
 ## 5. Image metadata
 
@@ -110,6 +110,12 @@ on slow-negotiating links.
 
 ## 6. Build tooling
 
+**Done** (commits `d368a22`, `1988ae3`): `build.py` builds a missing local
+parent image first (and otherwise indicates the date of the local image it
+uses), and the k3s and RTKBase versions are pinned in `env.py`. Remaining:
+the consistent pull policy, and Alpine's kexec-tools taken from
+`edge/testing` (see the Alpine upgrade).
+
 - `build.py` doesn't know the dependencies between images. For example,
   `rpi32-rtk-base` is `FROM rpi32-debian:latest`. Building a featured image
   silently uses whatever base image is in the local cache. The Makefile or
@@ -121,6 +127,10 @@ on slow-negotiating links.
   are pinned; check the others).
 
 ## 7. Smoke tests
+
+**Done** (commit `7d0ab45`): `tests/smoke.sh`. Image-specific checks
+exist for the k3s images only; more can be added in
+`tests/checks/<image>.sh`.
 
 Add a small script, for example `tests/smoke.sh <image> <node>`, that runs:
 
