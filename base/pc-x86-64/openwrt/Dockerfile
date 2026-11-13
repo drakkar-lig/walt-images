@@ -106,8 +106,8 @@ WORKDIR /root/rootfs
 # device, which is detected at bootup by /etc/init.d/walt-net.
 # (and since this interface is not declared in /etc/config/network,
 # dnsmasq cannot serve DHCP on walt-net.)
-COPY base/pc-x86-64/openwrt/firewall-walt-zone /root/
-RUN cat /root/firewall-walt-zone >> etc/config/firewall
+COPY base/common/openwrt-firewall-walt-zone /root/
+RUN cat /root/openwrt-firewall-walt-zone >> etc/config/firewall
 RUN mkdir -p etc/walt usr/bin run
 COPY overlays/generic overlays/openwrt overlays/ipxe \
      overlays/spec-ipxe \

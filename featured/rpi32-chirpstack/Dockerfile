@@ -157,7 +157,16 @@ WORKDIR /image-rootfs
 # We need to tune a few things to run the OS on NFS
 # (see README-openwrt-on-nfs.md)
 RUN cp /image-files/etc/config/network etc/config/network
-RUN rm etc/rc.d/S*firewall
+# The network interface connected to walt-net is configured by the kernel
+# (ip=dhcp), so it is not declared in /etc/config/network (netifd would
+# reset it). The firewall zone 'walt' (accepting all traffic, since the
+# node must remain reachable by the server) refers to its network
+# device, which is detected at bootup by /etc/init.d/walt-net.
+# (same as image pc-x86-64-openwrt, see base/pc-x86-64/openwrt/README.md)
+COPY base/common/openwrt-firewall-walt-zone /root/
+RUN cat /root/openwrt-firewall-walt-zone >> etc/config/firewall
+COPY overlays/openwrt/etc/init.d/walt-net etc/init.d/
+RUN ln -s ../init.d/walt-net etc/rc.d/S18walt-net
 RUN cd /image-rootfs/dev && tar xf /image-files/dev-content.tar.gz
 
 # WalT needs [image]:/run to be present

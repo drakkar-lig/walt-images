@@ -16,7 +16,7 @@
 START=18
 
 get_walt_server_ip() {
-	local opt
+	local opt dev mountpoint fstype
 	for opt in $(cat /proc/cmdline)
 	do
 		case "$opt" in
@@ -26,6 +26,19 @@ get_walt_server_ip() {
 				;;
 		esac
 	done
+	# no walt.server.ip kernel parameter (e.g., when the firmware boots
+	# the kernel directly): use the server of the NFS root filesystem
+	# (walt-init may have mounted an overlay on top of it, so we do not
+	# check the mountpoint).
+	while read dev mountpoint fstype opt
+	do
+		case "$fstype:$dev" in
+			nfs*:*:/*)
+				echo "${dev%%:*}"
+				return
+				;;
+		esac
+	done < /proc/mounts
 }
 
 get_walt_net_device() {

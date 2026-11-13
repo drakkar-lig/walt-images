@@ -58,8 +58,14 @@ the following TCP connections:
 - Connections to WalT server on its TCP port 12342
   (for the node's "netconsole", if enabled)
   
-Since we are just on a testbed, we just disabled the service
-on this image.
+Instead of listing all these ports, the firewall service remains
+enabled and the network device connected to walt-net is placed in a
+firewall zone named `walt` which accepts all traffic (see
+`base/common/openwrt-firewall-walt-zone`). Since this device is not
+declared in `/etc/config/network`, the zone refers to the device
+directly, and the device is detected at bootup by `/etc/init.d/walt-net`
+(see `overlays/openwrt`). This way, users can still configure the
+firewall for other network interfaces.
 
 
 ## Device files in /dev
