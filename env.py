@@ -86,13 +86,37 @@ of those two boards must be bridged together.)"""
         'short': "WALT image for turning a pc-x86-64 node into a Kubernetes server",
         'long': """\
 This image allows to turn pc-x86-64 node into a single-node Kubernetes (k3s) cluster.
-(See "pc-x86-64-k3s-agent" for adding more k3s nodes to this cluster.)"""
+(See "pc-x86-64-k3s-agent" for adding more k3s nodes to this cluster.)
+
+The node must be named `k3s-server` (agents connect to `k3s-server.walt`).
+k3s needs its data (`/var/lib/rancher`) on local storage, so the node must
+use an hybrid boot mode, which requires a local disk with an ext4 partition
+(see `walt help show boot-modes`). For instance, with a virtual node:
+```
+$ walt node create k3s-server
+$ walt node config k3s-server netsetup=NAT boot.mode=hybrid-volatile \\
+        disks=8G[template=swap],16G[template=ext4]
+$ walt image clone hub:waltplatform/pc-x86-64-k3s-server k3s-server
+$ walt node boot k3s-server k3s-server
+```
+(`netsetup=NAT` allows k3s to download container images from the Internet.)"""
     },
     'pc-x86-64-k3s-agent': {
         'short': "WALT image for turning a pc-x86-64 node into a Kubernetes node",
         'long': """\
 This image allows to add a k3s node to a cluster.
-(See also "pc-x86-64-k3s-server".)"""
+(See also "pc-x86-64-k3s-server".)
+
+The agent joins the cluster of the node named `k3s-server`.
+Like the server, it needs `netsetup=NAT` and an hybrid boot mode (thus a
+local disk with an ext4 partition). For instance, with a virtual node:
+```
+$ walt node create k3s-agent-1
+$ walt node config k3s-agent-1 netsetup=NAT boot.mode=hybrid-volatile \\
+        disks=8G[template=swap],16G[template=ext4]
+$ walt image clone hub:waltplatform/pc-x86-64-k3s-agent k3s-agent
+$ walt node boot k3s-agent-1 k3s-agent
+```"""
     },
     'rpi32-rtk-base': {
         'short': "WALT image with RTKBase GPS software for raspberry pi boards",
