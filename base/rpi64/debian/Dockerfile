@@ -2,7 +2,7 @@
 ARG OS_TYPE
 ARG OS_VERSION
 
-FROM debian:bullseye as builder
+FROM debian:trixie as builder
 
 # arguments needed in image build steps
 ARG OS_TYPE
@@ -19,7 +19,7 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
 # install packages
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     vim net-tools procps subversion make gcc g++ libncurses5-dev bzip2 \
-    wget cpio python unzip bc kpartx dosfstools debootstrap debian-archive-keyring \
+    wget cpio python3 unzip bc kpartx dosfstools debootstrap debian-archive-keyring \
     git flex bison pkg-config zlib1g-dev libglib2.0-dev \
     libpixman-1-dev gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu libssl-dev kmod \
     dpkg-dev debhelper bash-completion shellcheck rdfind && \

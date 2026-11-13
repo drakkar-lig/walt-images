@@ -13,8 +13,8 @@ fi
 
 PACKAGES="init ssh openssh-server usbutils \
     locales netcat-openbsd lldpd vim python3-pip python3-venv kexec-tools wget \
-    htop e2fsprogs dosfstools iputils-ping python3-serial ntpdate ifupdown \
-    lockfile-progs ptpd initramfs-tools nfs-common \
+    htop e2fsprogs dosfstools iputils-ping python3-serial ntpsec-ntpdate \
+    ifupdown lockfile-progs ptpd initramfs-tools nfs-common \
     jq"
 PACKAGES_RPI5_VPN="mtools curl"    # for VPN enrollment, boot.img
 PACKAGES_NO_RECOMMENDS="cron"
@@ -46,13 +46,9 @@ then
     /debootstrap/debootstrap --second-stage
     mv /bin/mount.saved /bin/mount
 
-    # update apt repositories for faster build
-    mv /etc/apt/sources.list.fast /etc/apt/sources.list
-    if [ "$image_kind" = "rpi32" ]
-    then
-        # register Raspberry Pi Archive Signing Key
-        apt-key add - < /root/82B129927FA3303E.pub
-    fi
+    # apt sources are defined in /etc/apt/sources.list.d/*.sources
+    # (see populate_rpi_rootfs.sh), remove the one written by debootstrap
+    rm -f /etc/apt/sources.list
     mkdir -p /media/sdcard
 elif [ "$image_kind" = "nanopi-r5c" ]
 then
@@ -67,12 +63,19 @@ fi
 
 case "$image_kind" in
     "rpi32")
-        PACKAGES="u-boot-tools raspi-utils rpi-eeprom raspberrypi-kernel \
-                  raspberrypi-bootloader $PACKAGES $PACKAGES_FIRMWARE"
+        PACKAGES="u-boot-tools raspi-utils raspi-firmware rpi-eeprom \
+                  raspberrypi-archive-keyring \
+                  linux-image-rpi-v6 linux-image-rpi-v7 \
+                  linux-image-rpi-v8:arm64 \
+                  $PACKAGES $PACKAGES_FIRMWARE"
+        # rpi-4-b and rpi-400 boot the 64-bit kernel (rpi-v8), since the
+        # 32-bit one (rpi-v7) has no driver for their ethernet chip.
+        dpkg --add-architecture arm64
         arch=arm
         ;;
     "rpi64")
         PACKAGES="u-boot-tools raspi-utils raspi-firmware rpi-eeprom \
+                  raspberrypi-archive-keyring \
                   linux-image-rpi-v8 linux-image-rpi-2712 \
                   linux-headers-rpi-v8 linux-headers-rpi-2712 \
                   $PACKAGES $PACKAGES_RPI5_VPN $PACKAGES_FIRMWARE"
@@ -83,16 +86,13 @@ case "$image_kind" in
         PACKAGES="u-boot-tools linux-image-arm64 \
                   rfkill wireless-regdb wpasupplicant $PACKAGES"
         ;;
-    "pc-x86-32")
-        PACKAGES="linux-image-686-pae $PACKAGES $PACKAGES_FIRMWARE"
-        ;;
     "pc-x86-64")
         PACKAGES="linux-image-amd64 $PACKAGES $PACKAGES_FIRMWARE"
         ;;
 esac
 
 case "$image_kind" in
-    "pc-x86-32"|"pc-x86-64")
+    "pc-x86-64")
         if [ -f /etc/apt/sources.list ]
         then
                 # add non-free apt section
@@ -113,9 +113,20 @@ mv /etc/default/ptpd /etc/default/ptpd.new
 install_packages $PACKAGES
 install_packages --no-install-recommends $PACKAGES_NO_RECOMMENDS
 
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
+then
+    # package raspberrypi-archive-keyring now manages the signing key
+    # of archive.raspberrypi.com, remove our bootstrap copy
+    rm /etc/apt/trusted.gpg.d/raspberrypi-archive-bootstrap.asc
+fi
+
 # restore diverted files
 mv /etc/default/ptpd.new /etc/default/ptpd
 [ -e "/etc/default/lldpd.new" ] && mv /etc/default/lldpd.new /etc/default/lldpd
+
+# do this early (but we need wget) because it sometimes fails
+cd /tmp
+wget $EXTRACT_IKCONFIG_URL
 
 # if source is provided (for images which support WalT VPN),
 # compile tap-wrap
@@ -141,8 +152,6 @@ locale-gen
 
 # extract missing kernel config files (ik=in-kernel)
 # and generate initramfs images
-cd /tmp
-wget $EXTRACT_IKCONFIG_URL
 for kversion in $(ls /lib/modules)
 do
     if [ ! -f "/boot/config-$kversion" ]
@@ -178,9 +187,12 @@ fi
 # Enable our custom systemd units
 systemctl enable uptime-ready       # save uptime in /run when ready
 systemctl enable walt-lldp-monitor  # notify LLDP neighbors to server
-if [ "$image_kind" = "rpi64" ]
+if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     systemctl enable boot-firmware.mount           # RPi OS requirement
+fi
+if [ "$image_kind" = "rpi64" ]
+then
     systemctl enable walt-vpn-auto-enroll.service  # as the name suggests
 fi
 
@@ -188,7 +200,6 @@ fi
 systemctl disable systemd-timesyncd
 systemctl disable apt-daily.timer
 systemctl disable apt-daily-upgrade.timer
-systemctl disable exim4.service
 if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     systemctl disable rpi-eeprom-update
@@ -197,21 +208,6 @@ for timer_unit in $(ls /etc/systemd/system/timers.target.wants)
 do
     systemctl disable "$timer_unit"
 done
-
-# tweak system for kexec:
-# * disable kexec-load.service, we don't want to load the
-#   same kernel automatically because image may have changed
-#   when we reboot the node
-# * we keep kexec.service activated, which will be triggered
-#   at the end of the OS shutdown if a kexec kernel was
-#   previously loaded (i.e, by walt-ipxe-kexec-reboot)
-systemctl disable kexec-load.service
-
-if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
-then
-    # restore official apt repositories
-    mv /etc/apt/sources.list.official /etc/apt/sources.list
-fi
 
 # File policy-rc.d is available by default in debian images on docker hub
 # to prevent apt to start services immediately after they are installed.

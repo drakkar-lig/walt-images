@@ -5,6 +5,23 @@ arch="$1"
 
 . /boot/update-boot-files-functions.sh
 
+# the architecture of a given model is usually $arch, but in the case
+# of rpi32-debian, rpi-4-b and rpi-400 use a 64-bit kernel.
+get_model_arch() {
+    model="$1"
+    if [ -e "/boot/$model/kernel.extension" ]
+    then
+        kversion="$(get_kernel_version_from_extension \
+                        "$(cat "/boot/$model/kernel.extension")")"
+        if grep -q "^CONFIG_ARM64=y" "/boot/config-$kversion" 2>/dev/null
+        then
+            echo arm64
+            return
+        fi
+    fi
+    echo "$arch"
+}
+
 # Generate start.txt and start.uboot scripts
 # ------------------------------------------
 cd /boot/common-rpi
@@ -54,7 +71,7 @@ do
     if outdated "$initrd_uboot" "$initrd_orig"
     then
         echo "Generating $initrd_uboot"
-        mkimage -A $arch -T ramdisk -C none -n uInitrd \
+        mkimage -A $(get_model_arch $model) -T ramdisk -C none -n uInitrd \
                 -d "${initrd_orig}" "${initrd_uboot}"
     fi
 
@@ -124,6 +141,8 @@ do
         continue
     fi
 
+    series_arch="$(get_model_arch $series_model)"
+
     # generate f.its header
     cat > $tmpdir/f.its << EOF
 /dts-v1/;
@@ -137,7 +156,7 @@ do
                         description = "Kernel";
                         data = /incbin/("/boot/${series_model}/kernel");
                         type = "kernel";
-                        arch = "${arch}";
+                        arch = "${series_arch}";
                         os = "linux";
                         compression = "none";
                         hash {
@@ -148,7 +167,7 @@ do
                         description = "Initrd";
                         data = /incbin/("/boot/${series_model}/initrd");
                         type = "ramdisk";
-                        arch = "${arch}";
+                        arch = "${series_arch}";
                         os = "linux";
                         compression = "none";
                         hash {
@@ -165,7 +184,7 @@ EOF
                         description = "${model} DTB";
                         data = /incbin/("/boot/${model}/dtb");
                         type = "flat_dt";
-                        arch = "${arch}";
+                        arch = "${series_arch}";
                         compression = "none";
                         hash {
                                 algo = "sha1";

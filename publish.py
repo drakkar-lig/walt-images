@@ -73,7 +73,11 @@ else:
     else:
         models = [ model_type ]
     for model in models:
-        def_desc = env.DEFAULT_IMAGE_PER_BOARD_MODEL[model]
+        # note: some models have no default image defined
+        # (e.g., pc-x86-32, not supported by Debian anymore)
+        def_desc = env.DEFAULT_IMAGE_PER_BOARD_MODEL.get(model)
+        if def_desc is None:
+            continue
         def_desc = def_desc.split('.')
         if image_descriptor == def_desc:
             hub_repo_name = f"waltplatform/{model}-default"

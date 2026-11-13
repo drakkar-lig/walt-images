@@ -2,7 +2,7 @@
 ARG OS_TYPE
 ARG OS_VERSION
 
-FROM debian:bullseye as builder
+FROM debian:trixie as builder
 
 # arguments needed in image build steps
 ARG OS_TYPE
@@ -19,7 +19,7 @@ RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selectio
 # install packages
 RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     vim net-tools procps subversion make gcc g++ libncurses5-dev bzip2 \
-    wget cpio python unzip bc kpartx dosfstools debootstrap debian-archive-keyring \
+    wget cpio python3 unzip bc kpartx dosfstools debootstrap debian-archive-keyring \
     git flex bison pkg-config zlib1g-dev libglib2.0-dev \
     libpixman-1-dev gcc-arm-linux-gnueabi gcc-aarch64-linux-gnu libssl-dev kmod \
     dpkg-dev debhelper bash-completion shellcheck rdfind && \
@@ -40,9 +40,16 @@ COPY overlays/generic overlays/debian \
 COPY --from=waltplatform/rpi-boot-builder \
             /opt/boot_files/cmdline.txt \
             /opt/boot_files/config.txt \
+            /opt/boot_files/config-64.txt \
             /opt/boot_files/u-boot-rpi-3-b.img \
             /opt/boot_files/u-boot-rpi-4-b.img \
+            /opt/boot_files/u-boot-rpi-4-b-64b.img \
     /rpi_fs/boot/common-rpi/
+# note: on rpi-4-b and rpi-400, the 32-bit kernel (rpi-v7) provided by
+# Raspberry Pi OS (trixie) lacks the ethernet driver (bcmgenet). So, like
+# Raspberry Pi OS, we use the 64-bit kernel (rpi-v8) on these models
+# (with the 32-bit userspace): the firmware loads the 64-bit u-boot
+# (see config-64.txt), which loads this kernel.
 # when using firmware network boot (boot without a SD card), dtb will be loaded
 # directly by firmware, and u-boot should not make a new TFTP request for it.
 # the firmware-provided dtb has custom modifications that u-boot cannot apply

@@ -169,7 +169,20 @@ else
 fi
 
 echo mount -t ${proto} $opt_arg "$target" "$mountpoint"
-mount -t ${proto} $opt_arg "$target" "$mountpoint"
+# on physical machines, the network link may need a few seconds
+# to be up (auto-negotiation), so retry if the mount fails.
+attempt=1
+while ! mount -t ${proto} $opt_arg "$target" "$mountpoint"
+do
+    if [ $attempt -ge 30 ]
+    then
+        echo "ERROR: failed to mount the network filesystem."
+        exit 1
+    fi
+    echo "mount failed (network link not ready yet?), retrying..."
+    attempt=$((attempt+1))
+    sleep 1
+done
 
 if [ "$proto" = "nfs" ]
 then

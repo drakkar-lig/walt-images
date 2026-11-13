@@ -1,4 +1,4 @@
-# On a standard Raspberry Pi OS 64bit system, /boot/firmware
+# On a standard Raspberry Pi OS system, /boot/firmware
 # is the mount point of the SD card. So the OS has a script at
 # /etc/initramfs/post-update.d/z50-raspi-firmware responsible
 # for copying any updated initramfs archive from /boot to

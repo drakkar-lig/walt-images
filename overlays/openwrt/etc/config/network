@@ -1,13 +1,11 @@
+# The network interface connected to walt-net (usually eth0) is
+# configured by the initramfs and must not be managed by netifd
+# (this would reset it and disturb the NFS root filesystem).
+# So do not reference it in this file.
+# See /etc/init.d/walt-net for the related firewall configuration.
+
 config interface 'loopback'
-    option ifname 'lo'
-    option proto 'static'
-    option ipaddr '127.0.0.1'
-    option netmask '255.0.0.0'
-
-config interface 'wan'
-    option ifname 'eth0'
-    option proto 'dhcp'
-
-config interface 'wan6'
-    option ifname 'eth0'
-    option proto 'dhcp6'
+	option device 'lo'
+	option proto 'static'
+	option ipaddr '127.0.0.1'
+	option netmask '255.0.0.0'

@@ -7,8 +7,8 @@ KERNEL_VERSION = "6.1.60"
 KERNEL_ARCHIVE = f"https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-{KERNEL_VERSION}.tar.xz"
 OS_VERSIONS = {
     'alpine': "3.18.4",
-    'debian': "bookworm",
-    'openwrt': "21.02.3",
+    'debian': "trixie",
+    'openwrt': "25.12.6",
     'mendel': "20211117215217",
 }
 
@@ -38,7 +38,10 @@ DEFAULT_IMAGE_PER_BOARD_MODEL = {
     'rpi-4-b': 'debian.rpi64',
     'rpi-5-b': 'debian.rpi64',
     'rpi-400': 'debian.rpi64',
-    'pc-x86-32': 'debian.pc-x86-32',
+    # Since Debian Trixie, 32bit PC is no longer a supported architecture.
+    # We don't define a default model here, so the default WALT image
+    # for them will remain the Debian bookworm image previously published.
+    # 'pc-x86-32': 'debian.pc-x86-32',
     'pc-x86-64': 'debian.pc-x86-64',
     'coral-dev-board': 'mendel.coral-dev-board',
     'nanopi-r5c': 'debian.nanopi-r5c',
