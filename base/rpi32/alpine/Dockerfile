@@ -2,6 +2,11 @@
 ARG OS_TYPE
 ARG OS_VERSION
 
+# Raspberry Pi boot files built by walt-node-boot (git submodule);
+# build.py sets this argument (see get_rpi_boot_builder() there).
+ARG RPI_BOOT_BUILDER
+FROM ${RPI_BOOT_BUILDER} AS rpi-boot-files
+
 FROM debian:trixie as builder
 
 # arguments needed in image build steps
@@ -36,7 +41,7 @@ COPY overlays/generic overlays/${OS_TYPE} overlays/rpi \
 
 # add a copy of SD-card boot files
 # (needed to allow rpi3+ and later to boot without a SD card)
-COPY --from=waltplatform/rpi-boot-builder \
+COPY --from=rpi-boot-files \
             /opt/boot_files/cmdline.txt \
             /opt/boot_files/config.txt \
             /opt/boot_files/u-boot-rpi-3-b.img \

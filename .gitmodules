@@ -1,0 +1,3 @@
+[submodule "walt-node-boot"]
+	path = walt-node-boot
+	url = https://github.com/drakkar-lig/walt-node-boot.git
