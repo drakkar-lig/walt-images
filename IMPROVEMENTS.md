@@ -299,47 +299,37 @@ walt commands may return exit code 0 when something failed, which breaks
 scripts (e.g., `tests/smoke.sh`, which now works around both cases below).
 All commands should return a non-zero exit code on failure.
 
-- `walt image clone` returned 0 when the server raised an exception (see
-  item 15).
+- **Root cause found** (2026-11-13): by convention, the `main()` method of a
+  walt client command returns `False` on failure, and
+  `client/walt/client/wrap.py` converts `SystemExit(False)` into exit code 1.
+  But plumbum 2.x (the server pins `plumbum==2.0.2`, and the client accepts
+  `plumbum>=1.7.2`) ends `Application._parse_and_dispatch()` with
+  `return inst, retcode or 0`, so `False` becomes `0` before the wrapper
+  sees it. Thus all walt commands returning `False` exit with code 0. For
+  instance, `walt image clone docker:waltplatform/does-not-exist:latest x`
+  prints "No such remote image" and exits 0. Possible fix: convert the
+  return value in walt's own base class (e.g., wrap the `main()` methods of
+  `WalTApplication` subclasses so that `False` becomes 1 and `True` becomes
+  0), which works with both plumbum versions.
 - `walt node wait --timeout <t>` did not return in some cases (node not
   booting).
 
-## 15. walt server: clone failures with a stale image store
+## 15. walt server: clone failure analysis
 
 On 2026-11-13, `walt image clone --force docker:waltplatform/rpi32-alpine:latest
-smoke-rpi32-alpine` failed with `podman.errors.exceptions.ImageNotFound:
-404 ... image not known`, and the failure deleted the user's existing image.
+smoke-rpi32-alpine` failed with `podman.errors.exceptions.ImageNotFound`,
+and the failure deleted the user's existing image (its backup remained as
+`localhost/walt/clone-temp:a68d5ec5`).
 
-**Trigger.** `docker.io/waltplatform/rpi32-alpine:latest` had been removed
-from podman with `podman rmi`, outside of walt. The server's image store
-(main process, `self.images`, and the `images` db table) still listed it.
+The trigger was an image removed with `podman rmi`, outside of walt, while
+the server's image store still listed it. **Not to be fixed**: the podman
+repository is internal to walt (owned by root on production servers), so
+this state is not possible there; users who build images themselves use
+docker or `walt image build`.
 
-**Bug 1: the clone workflow trusts the image store.** `perform_clone()`
-(`processes/blocking/images/clone.py`) computes `existing_server_image`
-with `image_store.__contains__()`, so it selected a workflow that starts by
-saving and removing this server image. `save_initial_images()` then failed
-to tag it (`registry.tag()` -> `ll_podman_tag()` -> 404). The store is
-resynced from podman only when an image is missing from the store
-(`get_images_per_fullnames()`), not when the store lists an image podman
-does not have. Possible fixes: check podman (not the store) when computing
-the workflow, or resync the store first; and make `save_initial_images()`
-and `remove_server_image()` tolerate a missing image.
-
-**Bug 2: the failure cleanup lost the user's image.** In
-`WorkflowCleaner.cleanup()`, on failure:
-1. it untags `ws_image_fullname` (`eduble/smoke-rpi32-alpine:latest`),
-   which was the user's existing image, already saved to a backup tag;
-2. it untags `remote_image_fullname` with `ignore_missing=True`, but
-   `image_exists()` returned True because of the stale `names_cache` of the
-   registry, so podman raised a 404 again;
-3. this second exception aborted the cleanup, so the backups were never
-   restored: the user's image was gone (a node was booting it), and the
-   backup stayed in podman as `localhost/walt/clone-temp:a68d5ec5`.
-
-The cleanup should be robust to errors in each step (restore the backups
-whatever happens), and `untag(..., ignore_missing=True)` should not rely on
-`names_cache` alone. `names_cache` should also be invalidated when podman
-reports the image is missing.
-
-After `podman pull docker-daemon:waltplatform/rpi32-alpine:latest`, the
-server image existed again and the clone succeeded.
+Clone failures in a consistent state were reviewed (pull errors, which
+raise an exception through `RegistryClientBase.checker()`; verification
+steps returning `False`, which always run before any image is modified;
+errors when tagging the cloned image): `WorkflowCleaner.cleanup()`
+restores the backups correctly in these cases. No specific fix needed.
+The only problem left is the exit code (see item 14).
