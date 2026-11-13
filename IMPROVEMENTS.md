@@ -57,12 +57,14 @@ scratch clone.
 ## 2. Test the rpi32-debian boot on all Raspberry Pi models
 
 The Pi 4/400 now boots the arm64 `linux-image-rpi-v8` kernel through the
-64-bit U-Boot (`config-64.txt`, `booti`), with the armhf userland. Still to
-test on hardware: 3B+ (non-regression), 400, and 4B on the FIT path
-(`fit-start.uboot`). Also check that the U-Boot load addresses in
-`set-fetch-addresses.sh` leave enough room for the rpi-v8 kernel: the kernel
-is at 0x80000 and the ramdisk at 0x2700000, so the kernel can be at most
-about 38 MiB.
+64-bit U-Boot (`config-64.txt`, `booti`), with the armhf userland. This was
+tested on a Pi 4B, together with a non-regression test on a Pi 2B. A 3B+
+still needs a non-regression test.
+
+If the kernel grows, check the U-Boot load addresses in
+`set-fetch-addresses.sh`. The kernel is at 0x80000 and the ramdisk at
+0x2700000, which leaves about 38 MiB for the unpacked kernel; the current
+rpi-v8 kernel is 25.6 MiB.
 
 ## 3. Other rpi32 images on Pi 4
 
@@ -136,8 +138,33 @@ release.
 - `pc-x86-64-openwrt`: document how to regenerate `build-files/kernel-config`
   (the procedure is currently only in a Dockerfile comment).
 
-## 9. Housekeeping
+## 9. Known issue found during tests: rename on an nbfs root
 
+On `apu8-426` (pc-x86-64, network-persistent mode), the trixie pc-x86-64
+image mounts its root filesystem with nbfs (`fuse.nbfs`). There, renaming a
+file loses it:
+
+```sh
+echo b > g.tmp; mv g.tmp g   # mv returns 0
+ls                           # neither g.tmp nor g is listed
+cat g                        # "Out of streams resources" (ENOSR)
+```
+
+`rm -rf` of the directory then fails with "Directory not empty". As a
+consequence, `apt update` fails (its "store" method renames the downloaded
+index files). With the same node on the bookworm image (NFS root), the same
+test passes. The `mount.nbfs` client in `overlays/mount.nbfs.amd64` was
+last updated in commit `0fcec1e` (2026-11-10). The bug may be in that
+client or in the server's nbfsd. Not yet analysed.
+
+## 10. Housekeeping
+
+- Remove the Raspberry Pi 400 from the supported boards. It was added
+  around 2020, at the request of a potential user, as an alternative while
+  Pi 4 boards were hard to find. It was never tested on real hardware and
+  was probably never used. This means removing `rpi-400` from the image
+  labels, the `overlays/*/boot/rpi-400` directories, the `rpi-400` dtb
+  entries in the FIT images, and `LABELS_PER_BOARD_MODEL` in `env.py`.
 - Remove the obsolete Mendel (coral-dev-board) image.
 - `rpi32-rtk-base`: report upstream that rtkbase's
   `install_polkit_rules.sh` misdetects polkit through `dpkg-query -W`.
