@@ -6,7 +6,15 @@ WORKDIR /root
 # note: we install polkitd here because the polkit rules installation
 # step of install.sh fails to detect it is missing on trixie.
 RUN apt update && apt install -y sudo wget lsb-release polkitd
-RUN wget https://raw.githubusercontent.com/Stefal/rtkbase/master/tools/install.sh -O install.sh && chmod +x install.sh
+# RTKBASE_VERSION is set by build.py (see PINNED_VERSIONS in env.py).
+# install.sh --rtkbase-release downloads the latest release, so we modify
+# it to download the release matching RTKBASE_VERSION.
+ARG RTKBASE_VERSION
+RUN wget "https://raw.githubusercontent.com/Stefal/rtkbase/${RTKBASE_VERSION}/tools/install.sh" \
+            -O install.sh && \
+    sed -i "s|releases/latest/download/|releases/download/${RTKBASE_VERSION}/|" install.sh && \
+    grep -q "releases/download/${RTKBASE_VERSION}/" install.sh && \
+    chmod +x install.sh
 RUN ./install.sh --user root --dependencies
 RUN ./install.sh --user root --rtkbase-release
 # according to the source code of install.sh --rtklib:

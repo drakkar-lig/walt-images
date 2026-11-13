@@ -11,6 +11,14 @@ OS_VERSIONS = {
     'openwrt': "25.12.6",
 }
 
+# versions of external software installed by some images, passed as
+# build arguments to the Dockerfiles which declare them (ARG <name>).
+# For instance, k3s-server and k3s-agent images must use the same k3s version.
+PINNED_VERSIONS = {
+    'K3S_VERSION': "v1.37.2+k3s1",
+    'RTKBASE_VERSION': "v2.7.0",
+}
+
 LABELS_PER_BOARD_MODEL = {
     'rpi32': { 'short': 'Rpi boards <= 4B', 'long': 'Raspberry Pi models supporting 32bit mode' },
     'rpi64': { 'short': 'Rpi boards >= 3B+', 'long': 'Recent Raspberry Pi models (>= 3B+)' },

@@ -33,6 +33,9 @@ Some featured images are based on a base image of this repository (e.g.,
 alone, the local version of the base image is used, or, if missing, it is
 built first. Run `make` (or build the base image first) to rebuild it.
 
+The versions of some external software installed in the images (k3s,
+RTKBase) are pinned in `env.py` (`PINNED_VERSIONS`).
+
 ---
 ![walt animated use case](https://walt-project.liglab.fr/-/wikis/walt.gif)
 

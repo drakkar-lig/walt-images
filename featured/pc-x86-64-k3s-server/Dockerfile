@@ -4,11 +4,13 @@ COPY overlays/featured /
 RUN echo /local /var/lib/rancher none defaults,bind 0 0 > /etc/fstab
 RUN apt update && apt install -y fuse-overlayfs policycoreutils curl uidmap
 # install k3s
-RUN curl -sfL https://get.k3s.io | \
+# (K3S_VERSION is set by build.py, see PINNED_VERSIONS in env.py)
+ARG K3S_VERSION
+RUN curl -sfL "https://raw.githubusercontent.com/k3s-io/k3s/${K3S_VERSION}/install.sh" | \
     sed -e 's/\(systemctl daemon-reload\)/echo "(bypassed)" \1/g' | \
     sed -e 's/\(systemctl restart\)/echo "(bypassed)" \1/g' \
     > install.sh
-RUN K3S_TOKEN="K3S_ON_WALT_TOKEN" sh -s - server < install.sh && rm install.sh
+RUN INSTALL_K3S_VERSION="${K3S_VERSION}" K3S_TOKEN="K3S_ON_WALT_TOKEN" sh -s - server < install.sh && rm install.sh
 # Modify k3s service definition so that it really stops everything on exit
 RUN echo "ExecStopPost=/usr/local/bin/k3s-killall.sh" >> \
             /etc/systemd/system/k3s.service && \

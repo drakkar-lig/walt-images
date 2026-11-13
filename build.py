@@ -88,9 +88,14 @@ def ensure_local_parent_images(dockerfile):
 
 
 def get_build_args(dockerfile):
-    if "RPI_BOOT_BUILDER" in Path(dockerfile).read_text():
-        return f" --build-arg RPI_BOOT_BUILDER={get_rpi_boot_builder()}"
-    return ""
+    text = Path(dockerfile).read_text()
+    build_args = ""
+    if "RPI_BOOT_BUILDER" in text:
+        build_args += f" --build-arg RPI_BOOT_BUILDER={get_rpi_boot_builder()}"
+    for name, version in env.PINNED_VERSIONS.items():
+        if re.search(rf"^ARG\s+{name}\s*$", text, re.MULTILINE):
+            build_args += f" --build-arg {name}={version}"
+    return build_args
 
 
 image_descriptor = sys.argv[1].split('.')
