@@ -21,7 +21,7 @@ PACKAGES_NO_RECOMMENDS="cron"
 
 PACKAGES_FIRMWARE="firmware-realtek firmware-bnx2 firmware-bnx2x firmware-qlogic \
     firmware-atheros firmware-brcm80211 firmware-misc-nonfree"
-EXTRACT_IKCONFIG_URL="https://raw.githubusercontent.com/torvalds/linux/master/scripts/extract-ikconfig"
+EXTRACT_IKCONFIG_URL="https://raw.githubusercontent.com/torvalds/linux/v6.12/scripts/extract-ikconfig"
 
 install_packages() {
     apt-get update
@@ -125,8 +125,9 @@ mv /etc/default/ptpd.new /etc/default/ptpd
 [ -e "/etc/default/lldpd.new" ] && mv /etc/default/lldpd.new /etc/default/lldpd
 
 # do this early (but we need wget) because it sometimes fails
+# (e.g., "429 Too Many Requests" errors)
 cd /tmp
-wget $EXTRACT_IKCONFIG_URL
+wget --tries=5 --waitretry=30 --retry-on-http-error=429,503 $EXTRACT_IKCONFIG_URL
 
 # if source is provided (for images which support WalT VPN),
 # compile tap-wrap
