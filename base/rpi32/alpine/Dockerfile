@@ -45,7 +45,6 @@ COPY --from=rpi-boot-files \
             /opt/boot_files/cmdline.txt \
             /opt/boot_files/config.txt \
             /opt/boot_files/u-boot-rpi-3-b.img \
-            /opt/boot_files/u-boot-rpi-4-b.img \
     /rpi_fs/boot/common-rpi/
 # when using firmware network boot (boot without a SD card), dtb will be loaded
 # directly by firmware, and u-boot should not make a new TFTP request for it.
@@ -56,29 +55,30 @@ RUN sed -i -e "s/$/ u-boot:preserve_dtb/" /rpi_fs/boot/common-rpi/cmdline.txt
 
 # Alpine base
 # -----------
-# we consider the official arm32v6 alpine image is suitable
-# for raspberry pi boards
-# note: specifying "--platform=linux/arm/v6" here does not work
-# well (cause image architecture warnings in walt image shell
-# or docker run), so we process in two steps here, we let the
-# target image specify "--platform=linux/arm/v6" and perform
-# "COPY --from=alpine_base / /" to retrieve the content of
-# this Alpine base image.
-FROM arm32v6/alpine:${OS_VERSION} as alpine_base
+# we use the official armv7 alpine image.
+# notes:
+# * in recent alpine versions (checked with 3.24), a single kernel package "linux-rpi" is
+#   available per architecture: the armhf (armv6) one only supports
+#   the rpi 1 (B, B+), and the armv7 one supports models 2B, 3B and 3B+.
+#   Both have the same kernel version string, so they cannot be installed
+#   together, and we dropped the rpi 1 models.
+# * the armv7 kernel lacks the ethernet driver of the rpi 4 (BCMGENET);
+#   see rpi64-alpine for models 3B+, 4B and 5B.
+# * the platform of this stage must be specified, otherwise docker looks
+#   for a variant of the image for the build host platform (e.g.,
+#   linux/amd64), and arm32v7/alpine has none. The target image retrieves
+#   the content of this stage ("COPY --from=alpine_base / /"), so this
+#   does not change the platform declared in the metadata of the final
+#   image (see "Image architecture" in README.md).
+FROM --platform=linux/arm/v7 arm32v7/alpine:${OS_VERSION} as alpine_base
 
 # Target image
 # ------------
-FROM --platform=linux/arm/v6 scratch
+FROM --platform=linux/arm/v7 scratch
 ARG KERNEL_VERSION
 
 # specify which node models this image can handle
-# unfortunately this official alpine image provides no kernel for the rpi4 board,
-# so model rpi-4-b is excluded from our models.
-# (linux-rpi2 packages used for models 2 & 3 works but we miss the
-# broadcom genet ethernet driver.)
-# future work: if building from aarch64 version, we could make an image
-# for models rpi3b, rpi3b+ and rpi4b.
-LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus
+LABEL walt.node.models=rpi-2-b,rpi-3-b,rpi-3-b-plus
 
 # specify min walt server version needed
 LABEL walt.server.minversion=5

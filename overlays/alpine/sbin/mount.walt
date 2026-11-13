@@ -75,7 +75,7 @@ configure_ip() {
                 fi
                 echo "Obtaining IP via DHCP ($device)"
                 ifconfig "$device" 0.0.0.0
-                udhcpc -i "$device" -f -q
+                udhcpc -i "$device" -f -q -s "$(walt_udhcpc_script)"
         else
                 # manual configuration
                 [ -n "$client_ip" -a -n "$netmask" ] || return
@@ -89,6 +89,48 @@ configure_ip() {
         for i in $dns1 $dns2; do
                 echo "nameserver $i" >> /etc/resolv.conf
         done
+}
+
+# udhcpc script: run the default script, and save the values we need
+# for computing the remote root path (see below).
+walt_udhcpc_script() {
+        mkdir -p /tmp
+        cat > /tmp/walt-udhcpc.script << 'EOF_SCRIPT'
+#!/bin/sh
+/usr/share/udhcpc/default.script "$@"
+case "$1" in
+        bound|renew)
+                cat > /tmp/walt-dhcp.env << EOF_ENV
+dhcp_ip='$ip'
+dhcp_server='${siaddr:-$serverid}'
+dhcp_hostname='$hostname'
+EOF_ENV
+                ;;
+esac
+EOF_SCRIPT
+        chmod +x /tmp/walt-udhcpc.script
+        echo /tmp/walt-udhcpc.script
+}
+
+# when the kernel is booted directly by the firmware (e.g., rpi64-alpine),
+# the kernel command line is static and specifies the remote root as
+# "<root-dir>" instead of "<server-ip>:<root-dir>", with a "%s" pattern
+# which must be replaced by the hostname, or the IP address of the node
+# (mimic the kernel behavior, like the walt script of the debian
+# initramfs).
+complete_remote_root() {
+        root="$1"
+        [ -f /tmp/walt-dhcp.env ] && . /tmp/walt-dhcp.env
+        if [ "${root#*:}" = "$root" ]
+        then
+                root="${dhcp_server}:${root}"
+        fi
+        host="${dhcp_hostname:-$dhcp_ip}"
+        while [ "${root#*%s}" != "$root" ]
+        do
+                root="${root%%%s*}${host}${root#*%s}"
+        done
+        echo "$root"
 }
 
 # parse arguments
@@ -144,6 +186,7 @@ done
 
 # configure network
 configure_ip
+target="$(complete_remote_root "$target")"
 
 # if nbfs, load fuse module
 if [ "$proto" = "nbfs" ]

@@ -6,7 +6,7 @@
 KERNEL_VERSION = "6.1.60"
 KERNEL_ARCHIVE = f"https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-{KERNEL_VERSION}.tar.xz"
 OS_VERSIONS = {
-    'alpine': "3.18.4",
+    'alpine': "3.24.4",
     'debian': "trixie",
     'openwrt': "25.12.6",
 }

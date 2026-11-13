@@ -14,9 +14,10 @@ ln -s /usr/sbin/mount.nbfs /sbin/mount.nbfs
 
 case "$image_kind" in
     "rpi32")
-        PACKAGES="linux-rpi linux-rpi2 u-boot-tools dtc \
+        # armv7 image for models 2B, 3B and 3B+, booted through u-boot
+        PACKAGES="linux-rpi u-boot-tools dtc \
                   raspberrypi-bootloader \
-                  raspberrypi  $PACKAGES"
+                  raspberrypi-utils $PACKAGES"
         ;;
     "pc-x86-32"|"pc-x86-64")
         PACKAGES="linux-lts $PACKAGES"
@@ -75,20 +76,22 @@ fi
 echo 'kernel/fs/nfs/*' > /etc/mkinitfs/features.d/walt.modules
 echo 'kernel/fs/fuse/*' >> /etc/mkinitfs/features.d/walt.modules
 echo '/sbin/mount.nfs' > /etc/mkinitfs/features.d/walt.files
-echo '/sbin/mount.nbfs' >> /etc/mkinitfs/features.d/walt.files
+# note: since mkinitfs 3.14 (alpine 3.24), the initramfs is usr-merged
+# (sbin -> usr/sbin), and mkinitfs fails to copy our symlink
+# /sbin/mount.nbfs -> /usr/sbin/mount.nbfs; it then silently generates
+# an incomplete initramfs. So we specify the target file.
+echo '/usr/sbin/mount.nbfs' >> /etc/mkinitfs/features.d/walt.files
 echo '/sbin/mount.walt' >> /etc/mkinitfs/features.d/walt.files
 echo 'features="base keymap kms virtio network dhcp walt"' > /etc/mkinitfs/mkinitfs.conf
-for kversion in $(ls /lib/modules) 
+for kversion in $(ls /lib/modules)
 do
-    mkinitfs $kversion
+    if ! mkinitfs $kversion
+    then
+        echo "mkinitfs failed for kernel $kversion" >&2
+        exit 1
+    fi
 done
 chmod a+r /boot/initramfs-*     # for TFTP access
-
-if [ "$image_kind" = "rpi32" ]
-then
-    # our image is based on arm32v6/alpine which does not work on the rpi4
-    rm -rf /boot/rpi-4-b
-fi
 
 # generate boot files in relevant dirs
 if [ -e /boot/update-boot-files.sh ]
