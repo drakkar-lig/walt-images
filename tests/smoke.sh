@@ -105,7 +105,16 @@ info "image $image (WalT image '$walt_image'), node $node" \
      "(previous image: $prev_image, netsetup: $netsetup)"
 
 info "cloning waltplatform/$image:latest"
-walt image clone --force "docker:waltplatform/$image:latest" "$walt_image"
+# note: "walt image clone" may return 0 even when the clone failed
+# (e.g., on a server exception), so we check its output too.
+clone_output="$(walt image clone --force \
+                "docker:waltplatform/$image:latest" "$walt_image" 2>&1)" || true
+echo "$clone_output"
+if ! echo "$clone_output" | grep -q "was cloned successfully"
+then
+    echo "FAIL  cloning waltplatform/$image:latest"
+    exit 1
+fi
 
 if [ "$prev_image" != "$walt_image" ]
 then
@@ -116,7 +125,9 @@ fi
 
 info "waiting for $node (timeout: ${timeout}s)"
 start=$(date +%s)
-if ! walt node wait --timeout "$timeout" "$node"
+# note: we also use the "timeout" command, because "walt node wait --timeout"
+# did not return in some cases (node not booting).
+if ! timeout "$((timeout + 30))" walt node wait --timeout "$timeout" "$node"
 then
     echo "FAIL  node bootup (timeout after ${timeout}s)"
     echo "Check the logs with: walt log show --issuers $node --history -5m:"
