@@ -1,5 +1,5 @@
 # boot
-# note: rpi-4-b and rpi-400 use a 64-bit u-boot and kernel on rpi32-debian
+# note: rpi-4-b uses a 64-bit u-boot and kernel on rpi32-debian
 echo 'Booting kernel...'
 if test "$cpu" = "armv8"
 then

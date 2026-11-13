@@ -1,1 +1,0 @@
-../common-rpi/config-64.txt

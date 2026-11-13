@@ -50,9 +50,9 @@ COPY --from=rpi-boot-files \
             /opt/boot_files/u-boot-rpi-4-b.img \
             /opt/boot_files/u-boot-rpi-4-b-64b.img \
     /rpi_fs/boot/common-rpi/
-# note: on rpi-4-b and rpi-400, the 32-bit kernel (rpi-v7) provided by
+# note: on rpi-4-b, the 32-bit kernel (rpi-v7) provided by
 # Raspberry Pi OS (trixie) lacks the ethernet driver (bcmgenet). So, like
-# Raspberry Pi OS, we use the 64-bit kernel (rpi-v8) on these models
+# Raspberry Pi OS, we use the 64-bit kernel (rpi-v8) on this model
 # (with the 32-bit userspace): the firmware loads the 64-bit u-boot
 # (see config-64.txt), which loads this kernel.
 # when using firmware network boot (boot without a SD card), dtb will be loaded
@@ -68,7 +68,7 @@ FROM --platform=linux/arm/v6 scratch
 ARG KERNEL_VERSION
 
 # specify which node models this image can handle
-LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b,rpi-400
+LABEL walt.node.models=rpi-b,rpi-b-plus,rpi-2-b,rpi-3-b,rpi-3-b-plus,rpi-4-b
 
 # specify min walt server version needed
 LABEL walt.server.minversion=5

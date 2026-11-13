@@ -6,7 +6,7 @@ arch="$1"
 . /boot/update-boot-files-functions.sh
 
 # the architecture of a given model is usually $arch, but in the case
-# of rpi32-debian, rpi-4-b and rpi-400 use a 64-bit kernel.
+# of rpi32-debian, rpi-4-b uses a 64-bit kernel.
 get_model_arch() {
     model="$1"
     if [ -e "/boot/$model/kernel.extension" ]

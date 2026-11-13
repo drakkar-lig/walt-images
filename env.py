@@ -21,7 +21,6 @@ LABELS_PER_BOARD_MODEL = {
     'rpi-3-b-plus': { 'short': 'Rpi 3B+ boards', 'long': 'Raspberry Pi 3B+ boards' },
     'rpi-4-b': { 'short': 'Rpi 4B boards', 'long': 'Raspberry Pi 4B boards' },
     'rpi-5-b': { 'short': 'Rpi 5B boards', 'long': 'Raspberry Pi 5B boards' },
-    'rpi-400': { 'short': 'Rpi 400 keyboards', 'long': 'Raspberry Pi 400 keyboards' },
     'pc-x86-32': { 'short': '32-bit PC machines', 'long': '32-bit PC machines' },
     'pc-x86-64': { 'short': '64-bit PC machines', 'long': '64-bit PC machines' },
     'nanopi-r5c': { 'short': 'NanoPi R5C', 'long': 'FriendlyElec NanoPi R5C' },
@@ -35,7 +34,6 @@ DEFAULT_IMAGE_PER_BOARD_MODEL = {
     'rpi-3-b-plus': 'debian.rpi64',
     'rpi-4-b': 'debian.rpi64',
     'rpi-5-b': 'debian.rpi64',
-    'rpi-400': 'debian.rpi64',
     # Since Debian Trixie, 32bit PC is no longer a supported architecture.
     # We don't define a default model here, so the default WALT image
     # for them will remain the Debian bookworm image previously published.

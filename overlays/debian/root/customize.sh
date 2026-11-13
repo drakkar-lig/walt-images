@@ -68,8 +68,8 @@ case "$image_kind" in
                   linux-image-rpi-v6 linux-image-rpi-v7 \
                   linux-image-rpi-v8:arm64 \
                   $PACKAGES $PACKAGES_FIRMWARE"
-        # rpi-4-b and rpi-400 boot the 64-bit kernel (rpi-v8), since the
-        # 32-bit one (rpi-v7) has no driver for their ethernet chip.
+        # rpi-4-b boots the 64-bit kernel (rpi-v8), since the
+        # 32-bit one (rpi-v7) has no driver for its ethernet chip.
         dpkg --add-architecture arm64
         arch=arm
         ;;

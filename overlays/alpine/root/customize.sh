@@ -86,8 +86,8 @@ chmod a+r /boot/initramfs-*     # for TFTP access
 
 if [ "$image_kind" = "rpi32" ]
 then
-    # our image is based on arm32v6/alpine which does not work on the rpi4 and rpi400
-    rm -rf /boot/rpi-4-b /boot/rpi-400
+    # our image is based on arm32v6/alpine which does not work on the rpi4
+    rm -rf /boot/rpi-4-b
 fi
 
 # generate boot files in relevant dirs
