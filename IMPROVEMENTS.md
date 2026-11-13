@@ -5,6 +5,8 @@ Ordered roughly by priority.
 
 ## 1. Integrate walt-node-boot into the build
 
+**Done** (commit `d26cba3`, walt-node-boot fixes pushed to its master up to `f62855a`).
+
 **Problem.** Three Dockerfiles take boot files from the intermediate
 image `waltplatform/rpi-boot-builder` that walt-node-boot produces:
 
@@ -77,8 +79,11 @@ rpi-v8 kernel is 25.6 MiB.
 
 ## 4. Harmonize the OpenWrt-based images
 
+**Done** for the firewall zone (commit `d766fb5`, tested on a pc-x86-64
+virtual node and an rpi-4-b node). The NFS mount retry was not ported to chirpstack.
+
 `pc-x86-64-openwrt` now leaves the walt-net interface alone (commit
-`efe9657`):
+`3642fd0`):
 
 - `/etc/config/network` has the loopback only.
 - `/etc/init.d/walt-net` adds the device to firewall zone `walt` at bootup.
@@ -91,7 +96,7 @@ scripts instead. Reusing the same overlay would:
 - let users enable the OpenWrt firewall or add more interfaces in the
   chirpstack image.
 
-The initramfs NFS mount retry (commit `75b0b41`) might also be useful there
+The initramfs NFS mount retry (commit `4e834ac`) might also be useful there
 on slow-negotiating links.
 
 ## 5. Image metadata
@@ -130,6 +135,8 @@ This would make it quicker to re-test all images on hardware before a
 release.
 
 ## 8. Documentation
+
+**Done** (commit `2bdccdc`).
 
 - k3s featured images: document the node configuration they need:
   - `netsetup=NAT`
@@ -230,15 +237,35 @@ forwarding table (FDB) for that port through SNMP:
   mapping (`dot1dBasePortIfIndex`) to the port numbering used for
   LLDP/PoE (see the port correlation logic in `snmp/poe.py`).
 
-## 12. Housekeeping
+## 12. walt server: crash when a vnode reboots before it is registered
 
-- Remove the Raspberry Pi 400 from the supported boards. It was added
+On 2026-11-13 at 12:30, `walt-server` crashed with
+`KeyError: '52:54:00:ed:6a:16'` in `nodes/manager.py`,
+`vnode_hard_reboot()` (`self.vnodes[node_mac]`). The server had just been
+restarted, and `walt image clone --force` rebooted `vn-openwrt` before
+`restore()` had registered its virtual node. `vnode_hard_reboot()` (and
+probably the other `vnode_*` methods) should handle a missing entry, for
+example by starting the vnode or reporting an error to the caller.
+
+Also, systemd did not restart `walt-server` after this crash: the unit has
+`Restart=on-failure`, but the daemon exited with status 0 ("Deactivated
+successfully") despite the unhandled exception. The daemon should exit with
+a non-zero status when a subprocess crashes. (At 12:20, during a disk-full
+period, systemd did restart it, but the start rate limit stopped it after
+6 failed attempts within 8 seconds; a `RestartSec=` of a few seconds would
+let it retry for longer.)
+
+## 13. Housekeeping
+
+- **Done** (commit `13218f5`). Remove the Raspberry Pi 400 from the supported boards. It was added
   around 2020, at the request of a potential user, as an alternative while
   Pi 4 boards were hard to find. It was never tested on real hardware and
   was probably never used. This means removing `rpi-400` from the image
   labels, the `overlays/*/boot/rpi-400` directories, the `rpi-400` dtb
   entries in the FIT images, and `LABELS_PER_BOARD_MODEL` in `env.py`.
-- Remove the obsolete Mendel (coral-dev-board) image.
+  The walt documentation in walt-python-packages still mentions the
+  Pi 400 and the Coral board.
+- **Done** (commit `a2ddd44`). Remove the obsolete Mendel (coral-dev-board) image.
 - `rpi32-rtk-base`: report upstream that rtkbase's
   `install_polkit_rules.sh` misdetects polkit through `dpkg-query -W`.
   The image works around this by installing `polkitd` explicitly.
