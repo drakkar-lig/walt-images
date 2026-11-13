@@ -36,6 +36,21 @@ built first. Run `make` (or build the base image first) to rebuild it.
 The versions of some external software installed in the images (k3s,
 RTKBase) are pinned in `env.py` (`PINNED_VERSIONS`).
 
+## Testing images
+
+`tests/smoke.sh <image> <node>` boots a WalT node on a locally built image
+and runs a few checks on it (network root filesystem, server reachability,
+clock, failed systemd units, internet access if the node has
+`netsetup=NAT`, and the image-specific checks of `tests/checks/<image>.sh`
+if this file exists). For instance:
+```
+$ tests/smoke.sh rpi32-debian my-rpi-node
+```
+The image is cloned as WalT image `smoke-<image>` (option `-n` selects
+another name) and the script stops if other nodes use this WalT image,
+since cloning reboots them. See the header of `tests/smoke.sh` for the
+other options.
+
 ---
 ![walt animated use case](https://walt-project.liglab.fr/-/wikis/walt.gif)
 
