@@ -307,10 +307,34 @@ All commands should return a non-zero exit code on failure.
   `return inst, retcode or 0`, so `False` becomes `0` before the wrapper
   sees it. Thus all walt commands returning `False` exit with code 0. For
   instance, `walt image clone docker:waltplatform/does-not-exist:latest x`
-  prints "No such remote image" and exits 0. Possible fix: convert the
-  return value in walt's own base class (e.g., wrap the `main()` methods of
-  `WalTApplication` subclasses so that `False` becomes 1 and `True` becomes
-  0), which works with both plumbum versions.
+  prints "No such remote image" and exits 0. This was not noticed because
+  plumbum was upgraded to 2.x recently.
+
+  **Planned fix** (walt-python-packages, `client/walt/client/application.py`):
+  convert the return value of `main()` in walt's own base class, before
+  plumbum sees it, which works with both plumbum 1.x and 2.x:
+  ```python
+  class WalTApplication(cli.Application):
+      def __init_subclass__(cls, **kwargs):
+          super().__init_subclass__(**kwargs)
+          main = cls.__dict__.get("main")
+          if main is not None:
+              @functools.wraps(main)
+              def wrapped_main(self, *args, **kwargs):
+                  res = main(self, *args, **kwargs)
+                  if res is False:
+                      return 1
+                  if res is True:
+                      return 0
+                  return res
+              cls.main = wrapped_main
+  ```
+  (`functools.wraps` keeps the signature visible to plumbum, which uses it
+  for the positional arguments, their validators such as
+  `IMAGE_CLONE_URL`, and the help.) The `False`/`True` handling of
+  `wrap.py` can then be removed. Check the commands whose `main()` is not
+  defined in a `WalTApplication` subclass, and add a test such as:
+  `walt image clone docker:waltplatform/does-not-exist:latest x; [ $? -eq 1 ]`.
 - `walt node wait --timeout <t>` did not return in some cases (node not
   booting).
 
