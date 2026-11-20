@@ -295,6 +295,11 @@ let it retry for longer.)
 
 ## 14. walt client: exit codes and failures
 
+**Done** for the exit codes (walt-python-packages commit `f6141937`, tag
+`future-v11`, implemented as planned below): failing commands now
+exit with code 1. The workarounds in `tests/smoke.sh` remain useful with
+older walt clients.
+
 walt commands may return exit code 0 when something failed, which breaks
 scripts (e.g., `tests/smoke.sh`, which now works around both cases below).
 All commands should return a non-zero exit code on failure.
