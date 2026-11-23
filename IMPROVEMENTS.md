@@ -254,6 +254,18 @@ forwarding table (FDB) for that port through SNMP:
 
 ## 12. walt server: crash when a vnode reboots before it is registered
 
+**Done** (walt-python-packages, tag `future-v11`), tested live on 2026-11-23:
+- commit `7f127797`: the daemon exits with a failure status when a
+  subprocess fails (it still exits with 0 on SIGTERM), and the unit has
+  `RestartSec=5`.
+- commit `37a47976`: server-hub holds the requests of walt clients (CSAPI)
+  until server-main calls `release_csapi()` at the end of its startup
+  workflow, which includes the startup of virtual nodes ("Ready." is
+  printed at this time). The other APIs are forwarded immediately, since
+  the startup uses them (`walt-exports-update` calls
+  `SSAPI.get_exports_info()`). So a client request can no longer reach a
+  vnode that is not registered yet; the `vnode_*` methods were left as is.
+
 On 2026-11-13 at 12:30, `walt-server` crashed with
 `KeyError: '52:54:00:ed:6a:16'` in `nodes/manager.py`,
 `vnode_hard_reboot()` (`self.vnodes[node_mac]`). The server had just been
