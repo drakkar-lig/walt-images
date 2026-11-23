@@ -193,7 +193,7 @@ with `-DNDEBUG`. Remaining issues found while debugging it:
 
 ## 10. walt server: one stuck node connection blocks the hub
 
-**Done** (walt-python-packages commit `81d66522`, tag `future-v11`), tested
+**Done** (walt-python-packages commit `cee2137d`, tag `future-v11`), tested
 live on 2026-11-23. The blocking read was in `TCPServer` (common), so
 server-main's TCP server (port 12347) had the same issue. A new connection
 is now handled by a `ListenerWrapper` registered in the event loop: it
@@ -205,9 +205,10 @@ timeout. Remaining limit: a client sending half a line and then freezing
 still blocks the process for up to 2 seconds; and later messages (e.g.,
 pickled API calls) are still read with blocking reads.
 
-Related cleanup (commit `1b5ca23f`, also before `future-v11`): since
-commit `978236a3`, the event loop gets the fd from the watched file, not
-from `listener.fileno()`, so the unused `fileno()` methods of 21 listener
+Related cleanup, merged into commit `210b0a5b` ("evloop: make the event
+loop the sole owner and closer of watched files"): since this commit, the
+event loop gets the fd from the watched file, not from
+`listener.fileno()`, so the unused `fileno()` methods of 21 listener
 classes were removed (kept on `ProcessConnector`, `SensorLogsMonitor` and
 file-like objects, which still need it).
 
@@ -273,10 +274,10 @@ forwarding table (FDB) for that port through SNMP:
 ## 12. walt server: crash when a vnode reboots before it is registered
 
 **Done** (walt-python-packages, tag `future-v11`), tested live on 2026-11-23:
-- commit `7f127797`: the daemon exits with a failure status when a
+- commit `67b28f2e`: the daemon exits with a failure status when a
   subprocess fails (it still exits with 0 on SIGTERM), and the unit has
   `RestartSec=5`.
-- commit `37a47976`: server-hub holds the requests of walt clients (CSAPI)
+- commit `7988a8dc`: server-hub holds the requests of walt clients (CSAPI)
   until server-main calls `release_csapi()` at the end of its startup
   workflow, which includes the startup of virtual nodes ("Ready." is
   printed at this time). The other APIs are forwarded immediately, since
@@ -325,7 +326,7 @@ let it retry for longer.)
 
 ## 14. walt client: exit codes and failures
 
-**Done** for the exit codes (walt-python-packages commit `f6141937`, tag
+**Done** for the exit codes (walt-python-packages commit `a94d381c`, tag
 `future-v11`, implemented as planned below): failing commands now
 exit with code 1. The workarounds in `tests/smoke.sh` remain useful with
 older walt clients.
