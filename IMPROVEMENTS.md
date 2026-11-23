@@ -375,8 +375,14 @@ All commands should return a non-zero exit code on failure.
   `wrap.py` can then be removed. Check the commands whose `main()` is not
   defined in a `WalTApplication` subclass, and add a test such as:
   `walt image clone docker:waltplatform/does-not-exist:latest x; [ $? -eq 1 ]`.
-- `walt node wait --timeout <t>` did not return in some cases (node not
-  booting).
+- ~~`walt node wait --timeout <t>` did not return in some cases (node not
+  booting).~~ **Not a bug** (analysed on 2026-11-23 from the server journal
+  of 2026-11-13): `walt node wait --timeout 600` did time out after exactly
+  600 s, but returned 0 because of the plumbum 2 issue above. `tests/smoke.sh`
+  then ran its checks with `walt node run`, which waits for the node bootup
+  without any timeout, and that command hung. Fixed by the exit code fix;
+  `tests/smoke.sh` now also checks the output of `walt node wait` for
+  "Timeout was reached" (walt-images commit `e03e6d2`, for older clients).
 
 ## 15. walt server: clone failure analysis
 
