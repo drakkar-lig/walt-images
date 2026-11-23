@@ -78,6 +78,16 @@ another name) and the script stops if other nodes use this WalT image,
 since cloning reboots them. See the header of `tests/smoke.sh` for the
 other options.
 
+`tests/image-shell-debian.sh <image>` tests `walt image shell` on a locally
+built Debian image, where the server starts systemd in the container (more
+minimalist images such as alpine or openwrt only get a shell process): it
+builds a derived image with postgresql (`walt image build`), then checks
+in a `walt image shell` session that systemd has no failed units and that
+the postgresql service answers. No node is needed. For instance:
+```
+$ tests/image-shell-debian.sh rpi32-debian
+```
+
 ---
 ![walt animated use case](https://walt-project.liglab.fr/-/wikis/walt.gif)
 
