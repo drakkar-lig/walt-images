@@ -5,6 +5,22 @@ then
     exit 1
 fi
 
+# systemd sets up the credentials of a unit (LoadCredential=, etc.) in a
+# new mount namespace, which fails with EINVAL when the image is emulated
+# (qemu-user does not support this clone() call). Units such as
+# systemd-journald or systemd-tmpfiles-setup would fail. Credentials are
+# not provided in this virtual environment anyway, so we disable them for
+# these units, with drop-ins in /run (not saved in the image).
+for unit_path in $(grep -l -s -E '^(Load|Import|Set)Credential' \
+                   /usr/lib/systemd/system/* /etc/systemd/system/*)
+do
+    dropin_dir="/run/systemd/system/$(basename "$unit_path").d"
+    mkdir -p "$dropin_dir"
+    printf '%s\n' '[Service]' 'LoadCredential=' 'LoadCredentialEncrypted=' \
+        'ImportCredential=' 'SetCredential=' 'SetCredentialEncrypted=' \
+        > "$dropin_dir/walt-image-shell.conf"
+done
+
 # allow images based on this one to provide their own customization
 # at /bin/walt-image-shell-start.d/ and /bin/walt-image-shell-shutdown.d/
 for script in $(ls /bin/walt-image-shell-start.d/* 2>/dev/null)
