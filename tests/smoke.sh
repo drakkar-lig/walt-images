@@ -125,9 +125,13 @@ fi
 
 info "waiting for $node (timeout: ${timeout}s)"
 start=$(date +%s)
-# note: we also use the "timeout" command, because "walt node wait --timeout"
-# did not return in some cases (node not booting).
-if ! timeout "$((timeout + 30))" walt node wait --timeout "$timeout" "$node"
+# note: walt clients using plumbum 2 and older than walt v11 return 0 even
+# when the timeout is reached, so we check the output too. (Otherwise the
+# "walt node run" command below waits for the node without any timeout.)
+wait_output="$(walt node wait --timeout "$timeout" "$node" 2>&1)" && \
+    wait_ok=1 || wait_ok=0
+[ -n "$wait_output" ] && echo "$wait_output"
+if [ "$wait_ok" = 0 ] || echo "$wait_output" | grep -q "Timeout was reached"
 then
     echo "FAIL  node bootup (timeout after ${timeout}s)"
     echo "Check the logs with: walt log show --issuers $node --history -5m:"
