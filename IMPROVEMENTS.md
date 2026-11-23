@@ -193,7 +193,7 @@ with `-DNDEBUG`. Remaining issues found while debugging it:
 
 ## 10. walt server: one stuck node connection blocks the hub
 
-**Done** (walt-python-packages commit `34029057`, tag `future-v11`), tested
+**Done** (walt-python-packages commit `81d66522`, tag `future-v11`), tested
 live on 2026-11-23. The blocking read was in `TCPServer` (common), so
 server-main's TCP server (port 12347) had the same issue. A new connection
 is now handled by a `ListenerWrapper` registered in the event loop: it
@@ -204,6 +204,12 @@ events. server-hub reads the target API line with the same 2 seconds
 timeout. Remaining limit: a client sending half a line and then freezing
 still blocks the process for up to 2 seconds; and later messages (e.g.,
 pickled API calls) are still read with blocking reads.
+
+Related cleanup (commit `1b5ca23f`, also before `future-v11`): since
+commit `978236a3`, the event loop gets the fd from the watched file, not
+from `listener.fileno()`, so the unused `fileno()` methods of 21 listener
+classes were removed (kept on `ProcessConnector`, `SensorLogsMonitor` and
+file-like objects, which still need it).
 
 On 2026-11-13, the `server-hub` process (pid 2307) was blocked in a
 blocking `recv()` on a connection from `apu8-426` (192.168.222.47 to port
