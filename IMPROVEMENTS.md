@@ -224,11 +224,11 @@ new connection.
 
 ## 11. walt server: check the switch port before turning PoE off
 
-**Done** (walt-python-packages commit `f84af4dd`, tag `future-v11`), tested
+**Done** (walt-python-packages commit `1ccd453e`, tag `future-v11`), tested
 end to end on 2026-11-23: with a node moved to a switch port where walt
 still recorded another node, `walt node reboot --hard <old node>` failed
-with "another device is connected to this switch port (...), network
-topology is outdated", the obsolete topology entry was forgotten, and the
+with "detected another device on this switch port" (shortened after the
+test), the obsolete topology entry was forgotten, and the
 moved node kept running (walt-lldp-monitor was disabled in its image, since
 it may already report such changes). When turning PoE off, `walt-set-poe`
 receives the node MAC and reads the MACs detected on the port (LLDP
