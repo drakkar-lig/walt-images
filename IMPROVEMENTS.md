@@ -421,3 +421,26 @@ steps returning `False`, which always run before any image is modified;
 errors when tagging the cloned image): `WorkflowCleaner.cleanup()`
 restores the backups correctly in these cases. No specific fix needed.
 The only problem left is the exit code (see item 14).
+
+## 16. walt image shell: failed systemd units on emulated images
+
+**Done** (commits `f6fca5e`, `520ddc5`), tested on 2026-11-23. In
+`walt image shell`, debian images start systemd in the container. On
+emulated images (rpi32-debian on the amd64 server), the units declaring
+credentials (`LoadCredential=`, `ImportCredential=`...) failed with
+`243/CREDENTIALS`: systemd forks `(sd-mkdcreds)` in a new mount namespace,
+and qemu-user rejects this `clone()` with EINVAL. The state was "degraded",
+with systemd-journald, systemd-tmpfiles-setup, systemd-sysusers, etc.
+failed. Native images (pc-trixie) were fine. `walt-image-shell-start` now
+resets the credentials of these units with drop-ins in
+`/run/systemd/system` (not saved in the image). postgresql worked even
+before the fix. New test: `tests/image-shell.sh <image>` (postgresql in a
+derived image, built with `walt image build`; no node needed): 1 failure
+on the current rpi32-debian build, 2 passes with the fix.
+
+To do:
+- rebuild and publish the debian images to ship the fix.
+- `walt-image-shell-start` and `walt-image-shell-shutdown` never run the
+  scripts of `/bin/walt-image-shell-{start,shutdown}.d/`: `ls dir/*`
+  already prints full paths, and the loop prefixes the directory again.
+  No image of this repository uses these directories.
