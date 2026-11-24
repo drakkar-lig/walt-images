@@ -381,8 +381,9 @@ let it retry for longer.)
   systemd's `RuntimeWatchdogSec=180`), a CPU that was not stopped after
   the panic may keep petting it. Possible fixes (not done, to discuss):
   kernel parameter `watchdog.open_timeout=<s>` (the kernel stops petting
-  if userspace did not open the watchdog in time; then every rpi image
-  must open it, or nodes would reboot), and a watchdog daemon in Alpine
+  if userspace did not open the watchdog in time; the command line is
+  defined per image, so it can be added only to images whose userspace
+  opens the watchdog), and a watchdog daemon in Alpine
   images (e.g. busybox `watchdog`). Draft issue:
   `issue-drafts/rpi-watchdog-support.md`.
 
