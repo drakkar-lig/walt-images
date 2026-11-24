@@ -1,50 +1,38 @@
 **Target:** https://github.com/Stefal/rtkbase/issues
 
-**Title:** install_polkit_rules.sh: polkitd not installed when dpkg knows the package but it is not installed
+**Title:** install_polkit_rules.sh: polkitd is not installed when dpkg knows the package but it is not installed
 
-### Description
+---
 
+**Describe the bug**
 `tools/install_polkit_rules.sh` decides whether to install `polkitd` with:
 
 ```bash
 ! dpkg-query -W --showformat='${Status}\n' polkitd >/dev/null 2>&1 && apt-get -y install polkitd
 ```
 
-But `dpkg-query -W` returns exit code 0 for any package that has an entry in the dpkg database, including packages that are **not installed** (status `unknown ok not-installed`, or `deinstall ok config-files` after a removal). In that case, `polkitd` is not installed, and the next step fails because `/etc/polkit-1/rules.d/` does not exist:
+But `dpkg-query -W` returns exit code 0 for any package that has an entry in the dpkg database, including packages that are **not installed** (status `unknown ok not-installed`, or `deinstall ok config-files` after a removal). In that case `polkitd` is not installed, and copying the rules then fails because `/etc/polkit-1/rules.d/` does not exist.
 
-```
-cp: target '/etc/polkit-1/rules.d/': No such file or directory
-```
+Note: on the `dev` branch, the `!` was removed (`dpkg-query ... && apt-get -y install polkitd`). This fixes the case above, but breaks the opposite one: when dpkg does not know the package at all, `dpkg-query` fails and polkitd is not installed.
 
-### How to reproduce
+**To Reproduce**
+Steps to reproduce the behavior:
+1. Start from a Debian trixie (armhf) system where polkitd is not installed but known to dpkg:
+   ```console
+   # dpkg-query -W --showformat='${Status}\n' polkitd; echo "rc=$?"
+   unknown ok not-installed
+   rc=0
+   # dpkg -l polkitd | tail -1
+   un  polkitd        <none>       <none>       (no description available)
+   ```
+2. Run the installation steps (`install.sh --user <user> --dependencies`, `--rtkbase-release`, then `--unit-files`, which calls `install_polkit_rules.sh`).
+3. polkitd is not installed, and the polkit rules copy fails:
+   ```
+   cp: target '/etc/polkit-1/rules.d/': No such file or directory
+   ```
 
-On a Debian trixie (armhf) system where polkitd is not installed but known to dpkg:
-
-```console
-# dpkg-query -W --showformat='${Status}\n' polkitd; echo "rc=$?"
-unknown ok not-installed
-rc=0
-# dpkg -l polkitd | tail -1
-un  polkitd        <none>       <none>       (no description available)
-```
-
-Then `install.sh --user <user> --unit-files` (which calls `install_polkit_rules.sh`) does not install polkitd.
-
-We hit this with RTKBase v2.7.0, when building a Raspberry Pi image from a Debian trixie base, and we currently work around it by installing `polkitd` before running `install.sh`.
-
-### Note about the `dev` branch
-
-On the `dev` branch, the `!` was removed:
-
-```bash
-dpkg-query -W --showformat='${Status}\n' polkitd >/dev/null 2>&1 && apt-get -y install polkitd
-```
-
-This installs polkitd in the case above, but no longer when dpkg does not know the package at all (`dpkg-query` then fails, so `apt-get` is not called).
-
-### Suggested fix
-
-Check the installation status itself, for example:
+**Expected behavior**
+`install_polkit_rules.sh` installs polkitd whenever it is not installed, then installs the rules. For example:
 
 ```bash
 if [[ "$(dpkg-query -W --showformat='${db:Status-Status}' polkitd 2>/dev/null)" != "installed" ]]
@@ -54,3 +42,16 @@ fi
 ```
 
 (or simply always run `apt-get -y install polkitd`, which does nothing if the package is already installed.)
+
+**Software/Hardware (please complete the following information):**
+ - RTKBase release number 2.7.0 (the code is the same on master)
+ - OS: Raspbian / Debian 13 (trixie), armhf
+ - SBC: Raspberry Pi (2B/3B/3B+/4B); the installation runs while building an OS image (Dockerfile), not on the board itself
+ - GNSS Device: not relevant (installation issue)
+ - Connection type: not relevant
+
+**Screenshots**
+N/A
+
+**Additional context**
+We build an OS image with RTKBase preinstalled for the WalT testbed (https://github.com/drakkar-lig/walt-images, image `rpi32-rtk-base`). We currently work around this issue by installing `polkitd` before running `install.sh`.

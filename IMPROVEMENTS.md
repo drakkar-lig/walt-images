@@ -254,8 +254,9 @@ other MACs but not the node one are detected, it exits with code 2 without
 touching PoE, and the server forgets the topology entry. If nothing is
 detected, or the tables cannot be read, the behavior is unchanged. The PoE
 operation itself still uses the port mapping heuristics of `snmp/poe.py`
-(they assume LLDP port number == ifIndex). A GitHub issue was proposed to
-the user for a more reliable mapping (`dot1dBasePortIfIndex`, etc.).
+(they assume LLDP port number == ifIndex). The user filed the issue for a more
+reliable mapping (`dot1dBasePortIfIndex`, etc.):
+https://github.com/drakkar-lig/walt-python-packages/issues/170.
 Remaining limit: `walt node reboot` still exits with 0 when the reboot
 fails.
 
