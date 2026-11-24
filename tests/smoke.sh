@@ -120,7 +120,19 @@ if [ "$prev_image" != "$walt_image" ]
 then
     # (otherwise, cloning already rebooted the node)
     info "booting $node on $walt_image"
-    walt node boot "$node" "$walt_image"
+    # note: walt clients >= v11 return 1 when the node could not be
+    # rebooted (the image is still assigned to the node).
+    if ! walt node boot "$node" "$walt_image"
+    then
+        echo "FAIL  rebooting $node"
+        if [ "$prev_image" = "-" ]
+        then
+            echo "To release $node: walt node release $node"
+        else
+            echo "To restore its image: walt node boot $node $prev_image"
+        fi
+        exit 1
+    fi
 fi
 
 info "waiting for $node (timeout: ${timeout}s)"
