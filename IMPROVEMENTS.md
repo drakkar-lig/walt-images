@@ -181,6 +181,8 @@ walt docs, and `base/pc-x86-64/openwrt/README.md` matches the Dockerfile.
 
 ## 9. nbfs read-write mode (network-persistent boot mode)
 
+**Handed over** (2026-11-24): these nbfs issues are handled by another agent.
+
 The rename bug found on 2026-11-13 is fixed in nbfs commit `5e333c6` on
 `etienne-dev`, which is deployed on the dev server. The cause was the SQL
 UPDATE of `db_rename_entry()` placed inside an `assert()`, which is removed
@@ -384,8 +386,8 @@ let it retry for longer.)
   if userspace did not open the watchdog in time; the command line is
   defined per image, so it can be added only to images whose userspace
   opens the watchdog), and a watchdog daemon in Alpine
-  images (e.g. busybox `watchdog`). Draft issue:
-  `issue-drafts/rpi-watchdog-support.md`.
+  images (e.g. busybox `watchdog`). Filed by the user:
+  https://github.com/drakkar-lig/walt-python-packages/issues/171.
 
 ## 14. walt client: exit codes and failures
 
