@@ -49,18 +49,34 @@ Steps for a WalT platform:
    - power off, hold the power button while connecting USB-C, then `mkdir -p metadata && ../rpiboot -d . -j metadata`.
    The OTP key hash can only be written in USB boot mode (rpiboot): `recovery.bin` does it when it receives `program_pubkey=1` over USB, and a `config.txt` on the SD card does not work. `flashrom` from Linux can write the EEPROM image, but not the OTP. Raspberry Pi's own tool for this, `rpi-sb-provisioner`, also uses rpiboot. So fusing cannot be done by `walt-vpn-auto-enroll`: it needs one physical step, connecting the board to a host over USB-C.
 
-   **Keeping enrollment easy: let the WalT server be the USB host.** The server holds the private key, so no signing service has to be exposed. A new server command (e.g., `walt-vpn-secure-boot`) would wait for a Pi 5 in USB boot mode and run rpiboot with a bundle prepared once per platform:
+   **Keeping enrollment easy: a WalT node as USB host.** On large platforms the WalT server may be in a datacenter, so the USB host should be a Raspberry Pi 5 WalT node, near where the boards are prepared. Fusing does not need the private key on this node: rpiboot only sends a bundle of files, which the server prepares once per platform (and again on bootloader updates), and which contains no secret:
    - the stock `recovery.bin`;
    - a `config.txt` with `program_pubkey=1`;
-   - an EEPROM image counter-signed with the server key (`update-pieeprom.sh -f -k`), whose config contains no secret, only a boot order allowing the classical network boot on the walt-net.
+   - an EEPROM image counter-signed with the server key (`update-pieeprom.sh -f -k`), whose config only allows the classical network boot on the walt-net.
+
+   The server exposes it to the walt-net (e.g., `http://server.walt/walt-vpn/sb-bundle.tar`). No signing service is exposed.
+
+   This feature goes in a dedicated featured image (e.g., `rpi64-sb-provisioner`), like `rpi32-sd-update`, rather than in a service of the default image: fusing is irreversible, and an experiment may connect other Raspberry Pi boards over USB (e.g., a CM4 or CM5 in USB boot mode). Booting a node on this image is the explicit choice. The service of the image:
+   - downloads the bundle at boot, and checks that the VPN is configured on the server;
+   - waits for a BCM2712 in USB boot mode (USB ID `0a5c:2712`);
+   - runs `rpiboot -d <bundle> -j <metadata>`: in a single `recovery.bin` run, the key hash is written in OTP, then the signed EEPROM is flashed (this order is safe);
+   - logs the result with the board serial number (from the metadata) to the WalT logs, and could register the serial number on the server, which then knows which boards are fused;
+   - waits for the next board.
 
    The whole procedure for the user would then be:
-   1. hold the power button of the board and connect it to a USB port of the WalT server with a USB-C cable; the command fuses the board and flashes the signed EEPROM in a single `recovery.bin` run (this order is safe: the key hash is written before the signed EEPROM is used);
-   2. connect the board to the walt-net, as today: it boots a signed `boot.img`, and `walt-vpn-auto-enroll` enrolls it, with an EEPROM image built and signed by the server (step 2).
+   1. `walt node boot <rpi5-node> rpi64-sb-provisioner`;
+   2. hold the power button of the new board and connect it with a USB-C cable to a USB-A port of this node, then wait for the log line;
+   3. connect the board to the walt-net, as today: it boots a signed `boot.img`, and `walt-vpn-auto-enroll` enrolls it, with an EEPROM image built and signed by the server (step 2).
+
+   Points to check:
+   - The provisioning node must supply enough USB current (official 27 W power supply, or `usb_max_current_enable=1`); a PoE-powered node may not.
+   - Building the bundle on the server (amd64): the BCM2712 bootloader firmware and `recovery.bin` can come from an rpi64 image (`/lib/firmware/raspberrypi/bootloader-2712/`), and the server needs the signing tools of `usbboot`/`rpi-eeprom` (`rpi-sign-bootcode`, `rpi-eeprom-digest`, `rpi-eeprom-config`).
+   - A board already fused with another key refuses the bundle; the service reports it.
+   - Small platforms can do the same from the server itself, if it is reachable, with the same bundle.
 
    To check: once fused, the classical network boot loads only `boot.img` + `boot.sig` (signed by the server, as for HTTP boot). The TFTP service must serve them at the paths requested by the firmware.
 
-   Risk: if the OTP is written but flashing the signed EEPROM fails, the board is locked with an unsigned EEPROM and does not boot. rpiboot with a counter-signed `recovery.bin` (`update-pieeprom.sh -fr`) can recover it; with the board still on the bench, the same server command can do it.
+   Risk: if the OTP is written but flashing the signed EEPROM fails, the board is locked with an unsigned EEPROM and does not boot. rpiboot with a counter-signed `recovery.bin` (`update-pieeprom.sh -fr`) can recover it; with the board still connected to the provisioning node, its service could do it, but this needs a bundle with a counter-signed `recovery.bin`, to be prepared by the server too.
 5. **Recovery afterwards:** SD card recovery files are no longer accepted (`recovery.bin` from SD is not loaded). The bootloader can only be updated by rpiboot with a counter-signed `recovery.bin` (`update-pieeprom.sh -fr`), or by its self-update.
 
 Remaining risks with secure boot:
