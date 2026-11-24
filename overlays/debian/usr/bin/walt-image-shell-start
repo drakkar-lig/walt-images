@@ -23,10 +23,9 @@ done
 
 # allow images based on this one to provide their own customization
 # at /bin/walt-image-shell-start.d/ and /bin/walt-image-shell-shutdown.d/
-for script in $(ls /bin/walt-image-shell-start.d/* 2>/dev/null)
+for script_path in /bin/walt-image-shell-start.d/*
 do
-    script_path="/bin/walt-image-shell-start.d/$script"
-    [ -x "$script_path" ] && "$script_path"
+    [ -f "$script_path" -a -x "$script_path" ] && "$script_path"
 done
 
 # start systemd

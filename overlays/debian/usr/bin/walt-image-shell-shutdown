@@ -1,10 +1,9 @@
 #!/bin/sh
 
 # restore changes added for sub-images based on this one
-for script in $(ls /bin/walt-image-shell-shutdown.d/* 2>/dev/null)
+for script_path in /bin/walt-image-shell-shutdown.d/*
 do
-    script_path="/bin/walt-image-shell-shutdown.d/$script"
-    [ -x "$script_path" ] && "$script_path"
+    [ -f "$script_path" -a -x "$script_path" ] && "$script_path"
 done
 
 # request systemd to shutdown
