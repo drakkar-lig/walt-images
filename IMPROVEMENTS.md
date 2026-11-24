@@ -344,12 +344,15 @@ let it retry for longer.)
   was probably never used. This means removing `rpi-400` from the image
   labels, the `overlays/*/boot/rpi-400` directories, the `rpi-400` dtb
   entries in the FIT images, and `LABELS_PER_BOARD_MODEL` in `env.py`.
-  The walt documentation in walt-python-packages still mentions the
-  Pi 400 and the Coral board.
+  The walt documentation in walt-python-packages also mentioned the Pi 400
+  and the Coral board: **done** (commit `a854abfe`, tag `future-v11`).
 - **Done** (commit `a2ddd44`). Remove the obsolete Mendel (coral-dev-board) image.
 - `rpi32-rtk-base`: report upstream that rtkbase's
   `install_polkit_rules.sh` misdetects polkit through `dpkg-query -W`.
   The image works around this by installing `polkitd` explicitly.
+  Draft issue ready (2026-11-24): `issue-drafts/rtkbase-polkitd-detection.md`
+  on this branch (the bug is still in master; the dev branch reverses the
+  test, which breaks the opposite case).
 - **Done** (commits `f6449ef`, `f82c7d5`). Upgrade Alpine (deferred during the trixie
   migration): 3.18.4 -> 3.24.4. mkinitfs now builds a usr-merged
   initramfs and silently produced an incomplete one (no root mount)
@@ -364,12 +367,21 @@ let it retry for longer.)
   the node within ~30 s, both with rpi32-debian and rpi32-alpine kernels.
   The original hang ("Mounting root: failed" comes from Alpine's
   initramfs, during the Alpine upgrade) happened when "SMP: failed to stop
-  secondary CPUs": the restart itself hung, probably intermittent. A
-  possible protection: arm the bcm2835 hardware watchdog early (u-boot,
-  right before booting the kernel), since the Linux watchdog core keeps
-  petting a watchdog left running by the bootloader until userspace (e.g.
-  systemd) opens it; risky because the max timeout is ~16 s and the
-  driver must probe before it expires. Not done.
+  secondary CPUs": the restart itself hung, probably intermittent.
+  The hardware watchdog is already armed before the kernel starts
+  (walt-node-boot, since 2023-01: `dtparam=watchdog=on` in config.txt, and
+  u-boot `CONFIG_WATCHDOG_AUTOSTART`, 15 s, `WDT_BCM2835`), unless the SD
+  card of rpi2b has older boot files (to check). Possible explanation of
+  the hang anyway: the rpi32 kernel has `WATCHDOG_HANDLE_BOOT_ENABLED=y`
+  and `WATCHDOG_OPEN_TIMEOUT=0`, so it pets a watchdog left running by
+  u-boot until userspace opens it, without limit. In the initramfs (or in
+  images where nothing opens the watchdog, e.g. Alpine: only Debian sets
+  systemd's `RuntimeWatchdogSec=180`), a CPU that was not stopped after
+  the panic may keep petting it. Possible fixes (not done, to discuss):
+  kernel parameter `watchdog.open_timeout=<s>` (the kernel stops petting
+  if userspace did not open the watchdog in time; then every rpi image
+  must open it, or nodes would reboot), and a watchdog daemon in Alpine
+  images (e.g. busybox `watchdog`).
 
 ## 14. walt client: exit codes and failures
 
