@@ -506,7 +506,12 @@ needed): 1 failure on the current rpi32-debian build, 2 passes with the
 fix.
 
 To do:
-- rebuild and publish the debian images to ship the fix.
+- rebuild and publish the debian images to ship the fix: **rebuilt** on
+  2026-11-24 (rpi32/rpi64/pc-x86-64/nanopi-r5c debian, and the featured
+  k3s-server, k3s-agent, rpi32-rtk-base, rpi32-sd-update,
+  rpi32-serial-monitor); `tests/image-shell-debian.sh` passes on the 4
+  debian base images, and `tests/smoke.sh -r rpi32-debian rpi3bp` passes
+  (6/6). Publishing is left to the user.
 - **Done** (commit `600385b`): `walt-image-shell-start` and
   `walt-image-shell-shutdown` never ran the scripts of
   `/bin/walt-image-shell-{start,shutdown}.d/` (`ls dir/*` already prints
