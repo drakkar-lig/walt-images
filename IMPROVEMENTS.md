@@ -91,10 +91,12 @@ rpi-v8 kernel is 25.6 MiB.
 the chirpstack image now keeps the firewall enabled and
 `/etc/init.d/walt-net` adds the walt-net device to firewall zone `walt`.
 
-Remaining: the initramfs NFS mount retry of `pc-x86-64-openwrt` (commit
-`4e834ac`) might also be useful for chirpstack on slow-negotiating links
-(but on rpi boards the kernel mounts the NFS root itself, without an
-initramfs).
+Closed (2026-11-24): the initramfs NFS mount retry of `pc-x86-64-openwrt`
+(commit `4e834ac`) does not apply to chirpstack for now, since on rpi
+boards the kernel mounts the NFS root itself, without an initramfs. The
+user plans to rework the chirpstack image later (rpi5b support, which will
+need an initramfs to boot as a VPN node); the retry can be reconsidered
+then.
 
 ## 5. Image metadata
 
@@ -356,6 +358,18 @@ let it retry for longer.)
 - The rpi-2-b node did not reboot automatically after a kernel panic
   ("Mounting root: failed", then "SMP: failed to stop secondary CPUs"). A
   `panic=<seconds>` kernel parameter might help, to be checked.
+  Checked on 2026-11-24: the rpi32 images already pass `panic=15` (u-boot
+  script `compute-bootargs.sh`; rpi64 images in `cmdline-*.txt`). A panic
+  triggered at runtime (`echo c > /proc/sysrq-trigger`) on rpi2b rebooted
+  the node within ~30 s, both with rpi32-debian and rpi32-alpine kernels.
+  The original hang ("Mounting root: failed" comes from Alpine's
+  initramfs, during the Alpine upgrade) happened when "SMP: failed to stop
+  secondary CPUs": the restart itself hung, probably intermittent. A
+  possible protection: arm the bcm2835 hardware watchdog early (u-boot,
+  right before booting the kernel), since the Linux watchdog core keeps
+  petting a watchdog left running by the bootloader until userspace (e.g.
+  systemd) opens it; risky because the max timeout is ~16 s and the
+  driver must probe before it expires. Not done.
 
 ## 14. walt client: exit codes and failures
 
