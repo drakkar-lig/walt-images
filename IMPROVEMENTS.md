@@ -168,7 +168,9 @@ release.
 
 ## 8. Documentation
 
-**Done** (commit `2bdccdc`).
+**Done** (commit `2bdccdc`). Checked on 2026-11-24: the k3s descriptions
+(`env.py`) match the configuration of the live k3s-server node and the
+walt docs, and `base/pc-x86-64/openwrt/README.md` matches the Dockerfile.
 
 - k3s featured images: document the node configuration they need:
   - `netsetup=NAT`
