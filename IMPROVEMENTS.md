@@ -117,9 +117,24 @@ initramfs).
 
 **Done** (commits `d368a22`, `1988ae3`): `build.py` builds a missing local
 parent image first (and otherwise indicates the date of the local image it
-uses), and the k3s and RTKBase versions are pinned in `env.py`. Remaining:
-the consistent pull policy, and Alpine's kexec-tools taken from
-`edge/testing` (see the Alpine upgrade).
+uses), and the k3s and RTKBase versions are pinned in `env.py`.
+
+**Done** (commits `efe760f`, `4671dbc`), 2026-11-24:
+- pull policy: with BuildKit, docker build uses a FROM image of the local
+  image store (matching platform) without checking the registry, and
+  resolves it on the registry only if it is missing. So local
+  `waltplatform/*` and rpi-boot-builder images were already used as is
+  (`--pull=never` is not needed), but external images (e.g.
+  `arm32v7/alpine:3.24.4`, pulled on 2026-11-05) could be outdated.
+  `build.py` now pulls the external FROM images, with their platform,
+  before each build (tested with `make build.alpine.pc-x86-64`).
+- external sources: all pinned (OpenWrt, ChirpStack and u-boot's
+  `merge_config.sh` tags, k3s, RTKBase, nanopi-r5 release and
+  linux-firmware, rpi kernel archive). Only distribution packages are
+  not, which is expected.
+- Alpine's kexec-tools is now taken from the release (`community`
+  repository) instead of `edge/testing`. This code is disabled
+  (`HAS_4671dbc=0`).
 
 - `build.py` doesn't know the dependencies between images. For example,
   `rpi32-rtk-base` is `FROM rpi32-debian:latest`. Building a featured image
