@@ -47,24 +47,20 @@ Steps for a WalT platform:
    - in its `config.txt`, set `program_pubkey=1` (irreversible), and optionally `program_jtag_lock=1` (irreversible, disables VideoCore JTAG);
    - sign the bootloader: `../tools/update-pieeprom.sh -f -k <key>`;
    - power off, hold the power button while connecting USB-C, then `mkdir -p metadata && ../rpiboot -d . -j metadata`.
-   This is the documented procedure (also used by Raspberry Pi's `rpi-sb-provisioner`). It needs a host connected over USB-C, so it would be done on a bench when preparing the board.
+   The OTP key hash can only be written in USB boot mode (rpiboot): `recovery.bin` does it when it receives `program_pubkey=1` over USB, and a `config.txt` on the SD card does not work. `flashrom` from Linux can write the EEPROM image, but not the OTP. Raspberry Pi's own tool for this, `rpi-sb-provisioner`, also uses rpiboot. So fusing cannot be done by `walt-vpn-auto-enroll`: it needs one physical step, connecting the board to a host over USB-C.
 
-   **Automating it in `walt-vpn-auto-enroll` (to be checked).** Keeping today's enrollment (boot once on the walt-net, and let the service do the rest) would be much better. What rpiboot does:
-   - rpiboot only sends files to the board. The OTP is written by `recovery.bin`, the second-stage loader that the ROM runs on the board, which reads `program_pubkey=1` from the `config.txt` it receives. In the same run, it also flashes the counter-signed EEPROM image.
-   - `flashrom` from Linux can write the EEPROM image (`rpi-eeprom-update` does so), but not the OTP key hash. No firmware mailbox call to write these OTP rows is documented (`vcmailbox` only writes the device private key rows).
-   - The order matters: a counter-signed EEPROM image written before the OTP key hash does not boot ("The BCM2712 will not boot a signed EEPROM image unless it holds the public key in its One Time Programmable (OTP) memory").
+   **Keeping enrollment easy: let the WalT server be the USB host.** The server holds the private key, so no signing service has to be exposed. A new server command (e.g., `walt-vpn-secure-boot`) would wait for a Pi 5 in USB boot mode and run rpiboot with a bundle prepared once per platform:
+   - the stock `recovery.bin`;
+   - a `config.txt` with `program_pubkey=1`;
+   - an EEPROM image counter-signed with the server key (`update-pieeprom.sh -f -k`), whose config contains no secret, only a boot order allowing the classical network boot on the walt-net.
 
-   On a board not yet fused, the ROM also loads `recovery.bin` from the SD card (this is the usual EEPROM update path: `recovery.bin` + `pieeprom.upd` + `pieeprom.sig` on the boot partition). The bootloader release notes mention SD cards made "to erase the EEPROM or program the RPIBOOT gpio on multiple devices", i.e., `recovery.bin` from a SD card reads a `config.txt` and can write OTP bits. Whether it honors `program_pubkey=1` from a SD card is not documented. If it does, the enrollment could be:
-   1. The node boots on the walt-net and enrolls as today. The server builds the EEPROM image (config + credentials blob from the node) and counter-signs it (`update-pieeprom.sh -f`).
-   2. `walt-vpn-auto-enroll` writes to the FAT partition of the SD card (needed anyway for #172): the stock `recovery.bin`, `pieeprom.upd` + `pieeprom.sig` (the signed image), and a `config.txt` with `program_pubkey=1`. Then it reboots.
-   3. The ROM runs `recovery.bin` from the SD card, which writes the key hash in OTP and flashes the signed EEPROM image, then renames itself (as for usual updates) and reboots.
-   4. The board is now locked. At its next boot, `walt-vpn-auto-enroll` checks the secure boot status and reports it to the server.
+   The whole procedure for the user would then be:
+   1. hold the power button of the board and connect it to a USB port of the WalT server with a USB-C cable; the command fuses the board and flashes the signed EEPROM in a single `recovery.bin` run (this order is safe: the key hash is written before the signed EEPROM is used);
+   2. connect the board to the walt-net, as today: it boots a signed `boot.img`, and `walt-vpn-auto-enroll` enrolls it, with an EEPROM image built and signed by the server (step 2).
 
-   Tests:
-   - **Harmless:** on an unfused board with UART console, a SD card with the stock `recovery.bin` and `pieeprom.upd` and a `config.txt` with a non-OTP recovery option (e.g., `recovery_wait=1`). This shows whether `recovery.bin` from the SD card reads this `config.txt`.
-   - **Irreversible:** the full flow above, on a spare board that will stay bound to the key of the WalT server used for the test.
+   To check: once fused, the classical network boot loads only `boot.img` + `boot.sig` (signed by the server, as for HTTP boot). The TFTP service must serve them at the paths requested by the firmware.
 
-   Risk in both procedures (rpiboot or SD card): if the OTP is written but flashing the signed EEPROM fails, the board is locked with an unsigned EEPROM and does not boot. Only rpiboot with a counter-signed `recovery.bin` (`update-pieeprom.sh -fr`) can recover it.
+   Risk: if the OTP is written but flashing the signed EEPROM fails, the board is locked with an unsigned EEPROM and does not boot. rpiboot with a counter-signed `recovery.bin` (`update-pieeprom.sh -fr`) can recover it; with the board still on the bench, the same server command can do it.
 5. **Recovery afterwards:** SD card recovery files are no longer accepted (`recovery.bin` from SD is not loaded). The bootloader can only be updated by rpiboot with a counter-signed `recovery.bin` (`update-pieeprom.sh -fr`), or by its self-update.
 
 Remaining risks with secure boot:
