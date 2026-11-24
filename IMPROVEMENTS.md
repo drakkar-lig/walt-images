@@ -448,7 +448,7 @@ All commands should return a non-zero exit code on failure.
   `tests/smoke.sh` now also checks the output of `walt node wait` for
   "Timeout was reached" (walt-images commit `e03e6d2`, for older clients).
 
-- **Done** (commit `9eae76f8`, tag `future-v11`), tested live on
+- **Done** (commit `913c02f4`, tag `future-v11`), tested live on
   2026-11-24: `walt node run` and `walt node shell` exit with the status of
   the remote command (highest one with several nodes). The client sends a
   random marker in the request parameters; the server then runs the command
@@ -461,7 +461,11 @@ All commands should return a non-zero exit code on failure.
   ended abnormally) gives 255, like ssh. Tested with and without a terminal, several nodes, binary
   output, stdin, `walt node shell` (`exit 7`), old-style requests, new
   client with the old server. `walt node reboot` (and `boot`, `acquire`,
-  `release`) exit with 1 when the reboot fails. Note: a remote shell killed
+  `release`) exit with 1 when the reboot fails. Same exit status handling
+  for `walt advanced sql`, `walt device shell`, `walt device ping` and
+  `walt node ping` (server now runs `ping -c 10 -W 1`, so ctrl-C after
+  some replies gives 0); not for `walt image shell` (the user may want to
+  save the image even if the last command failed). Note: a remote shell killed
   by a signal gives 255 (ssh's convention).
 
 ## 15. walt server: clone failure analysis
