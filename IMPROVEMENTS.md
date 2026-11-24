@@ -448,7 +448,7 @@ All commands should return a non-zero exit code on failure.
   `tests/smoke.sh` now also checks the output of `walt node wait` for
   "Timeout was reached" (walt-images commit `e03e6d2`, for older clients).
 
-- **Done** (commit `16e7c3e1`, tag `future-v11`), tested live on
+- **Done** (commit `9eae76f8`, tag `future-v11`), tested live on
   2026-11-24: `walt node run` and `walt node shell` exit with the status of
   the remote command (highest one with several nodes). The client sends a
   random marker in the request parameters; the server then runs the command
@@ -456,9 +456,9 @@ All commands should return a non-zero exit code on failure.
   and the client removes this last line from the output. It holds back
   only a final NUL byte possibly followed by the beginning of the marker,
   released after 50 ms without more data (first version held back any
-  `_`, which delayed the echo of typed underscores in `walt node shell`). Compatible both ways: older servers
-  ignore the marker (exit status 0, as before), older clients get no
-  trailer. Tested with and without a terminal, several nodes, binary
+  `_`, which delayed the echo of typed underscores in `walt node shell`). No compatibility code: clients
+  auto-upgrade to the server version. A missing status line (connection
+  ended abnormally) gives 255, like ssh. Tested with and without a terminal, several nodes, binary
   output, stdin, `walt node shell` (`exit 7`), old-style requests, new
   client with the old server. `walt node reboot` (and `boot`, `acquire`,
   `release`) exit with 1 when the reboot fails. Note: a remote shell killed
