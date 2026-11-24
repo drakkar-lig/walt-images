@@ -261,8 +261,7 @@ operation itself still uses the port mapping heuristics of `snmp/poe.py`
 (they assume LLDP port number == ifIndex). The user filed the issue for a more
 reliable mapping (`dot1dBasePortIfIndex`, etc.):
 https://github.com/drakkar-lig/walt-python-packages/issues/170.
-Remaining limit: `walt node reboot` still exits with 0 when the reboot
-fails.
+`walt node reboot` now exits with 1 when the reboot fails (item 14).
 
 This item is for walt-python-packages, not walt-images.
 
@@ -448,6 +447,20 @@ All commands should return a non-zero exit code on failure.
   without any timeout, and that command hung. Fixed by the exit code fix;
   `tests/smoke.sh` now also checks the output of `walt node wait` for
   "Timeout was reached" (walt-images commit `e03e6d2`, for older clients).
+
+- **Done** (commit `ac9f44c0`, tag `future-v11`), tested live on
+  2026-11-24: `walt node run` and `walt node shell` exit with the status of
+  the remote command (highest one with several nodes). The client sends a
+  random marker in the request parameters; the server then runs the command
+  through `sh -c '"$@"; printf "%s%d\n" "$WALT_EXIT_STATUS_MARKER" $?'`, and
+  the client removes this last line from the output (holding back only the
+  bytes which could start the marker). Compatible both ways: older servers
+  ignore the marker (exit status 0, as before), older clients get no
+  trailer. Tested with and without a terminal, several nodes, binary
+  output, stdin, `walt node shell` (`exit 7`), old-style requests, new
+  client with the old server. `walt node reboot` (and `boot`, `acquire`,
+  `release`) exit with 1 when the reboot fails. Note: a remote shell killed
+  by a signal gives 255 (ssh's convention).
 
 ## 15. walt server: clone failure analysis
 
