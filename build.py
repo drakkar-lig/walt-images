@@ -16,7 +16,7 @@ RPI_BOOT_BUILDER_IMAGE = "waltplatform/rpi-boot-builder"
 
 
 def run(cmd, **kwargs):
-    print(cmd)
+    print(cmd, flush=True)
     return subprocess.run(cmd, shell=True, **kwargs)
 
 
@@ -87,6 +87,33 @@ def ensure_local_parent_images(dockerfile):
         run(f"{sys.executable} build.py {descriptor}", check=True)
 
 
+def pull_external_images(dockerfile, build_args):
+    """Pull the external images used by FROM directives (e.g., debian:trixie).
+       If such an image is in the local image store, docker build uses it
+       without checking the registry, so the image could be outdated.
+       The images of this repository (waltplatform/*, the rpi-boot-builder
+       image) are not pulled: ensure_local_parent_images() and
+       get_rpi_boot_builder() ensure they are available locally, and docker
+       build uses them as is."""
+    values = dict(re.findall(r'--build-arg\s+(\w+)="?([^\s"]*)"?',
+                             build_args))
+    stages = set()
+    for platform, image, stage in re.findall(
+            r"^FROM\s+(?:--platform=(\S+)\s+)?(\S+)(?:\s+AS\s+(\S+))?\s*$",
+            Path(dockerfile).read_text(), re.MULTILINE | re.IGNORECASE):
+        image = re.sub(r"\$\{?(\w+)\}?",
+                       lambda m: values.get(m.group(1), m.group(0)), image)
+        if stage != "":
+            stages.add(stage)
+        if (image == "scratch" or image in stages or "$" in image or
+                image.startswith("waltplatform/")):
+            continue
+        platform_opt = f"--platform={platform} " if platform else ""
+        if run(f"docker pull -q {platform_opt}{image}").returncode != 0:
+            print(f"Warning: could not pull {image}, "
+                  "using the local version if any.")
+
+
 def get_build_args(dockerfile):
     text = Path(dockerfile).read_text()
     build_args = ""
@@ -107,6 +134,7 @@ if image_descriptor[0] == 'featured':
     ensure_local_parent_images(dockerfile)
     build_args = f'--build-arg SRC_DIR="{src_dir}"'
     build_args += get_build_args(dockerfile)
+    pull_external_images(dockerfile, build_args)
     run(f'nice docker build {build_args} \
         -f {dockerfile} \
         --tag=waltplatform/{name}:latest .',
@@ -124,6 +152,7 @@ else:
                          --build-arg KERNEL_VERSION={env.KERNEL_VERSION}"
 
     build_args += get_build_args(dockerfile)
+    pull_external_images(dockerfile, build_args)
 
     # docker build
     run(f'nice docker build {build_args} \
