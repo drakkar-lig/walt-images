@@ -424,7 +424,7 @@ The only problem left is the exit code (see item 14).
 
 ## 16. walt image shell: failed systemd units on emulated images
 
-**Done** (commits `f6fca5e`, `09c25c3`), tested on 2026-11-23. In
+**Done** (commits `f6fca5e`, `d729070`), tested on 2026-11-23. In
 `walt image shell`, debian images start systemd in the container. On
 emulated images (rpi32-debian on the amd64 server), the units declaring
 credentials (`LoadCredential=`, `ImportCredential=`...) failed with
@@ -441,7 +441,7 @@ fix.
 
 To do:
 - rebuild and publish the debian images to ship the fix.
-- **Done** (commit `b63df23`): `walt-image-shell-start` and
+- **Done** (commit `600385b`): `walt-image-shell-start` and
   `walt-image-shell-shutdown` never ran the scripts of
   `/bin/walt-image-shell-{start,shutdown}.d/` (`ls dir/*` already prints
   full paths, and the loop prefixed the directory again).
