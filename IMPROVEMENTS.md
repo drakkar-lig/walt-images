@@ -351,9 +351,7 @@ let it retry for longer.)
 - `rpi32-rtk-base`: report upstream that rtkbase's
   `install_polkit_rules.sh` misdetects polkit through `dpkg-query -W`.
   The image works around this by installing `polkitd` explicitly.
-  Draft issue ready (2026-11-24): `issue-drafts/rtkbase-polkitd-detection.md`
-  on this branch (the bug is still in master; the dev branch reverses the
-  test, which breaks the opposite case).
+  Filed by the user: https://github.com/Stefal/rtkbase/issues/566.
 - **Done** (commits `f6449ef`, `f82c7d5`). Upgrade Alpine (deferred during the trixie
   migration): 3.18.4 -> 3.24.4. mkinitfs now builds a usr-merged
   initramfs and silently produced an incomplete one (no root mount)
@@ -371,8 +369,9 @@ let it retry for longer.)
   secondary CPUs": the restart itself hung, probably intermittent.
   The hardware watchdog is already armed before the kernel starts
   (walt-node-boot, since 2023-01: `dtparam=watchdog=on` in config.txt, and
-  u-boot `CONFIG_WATCHDOG_AUTOSTART`, 15 s, `WDT_BCM2835`), unless the SD
-  card of rpi2b has older boot files (to check). Possible explanation of
+  u-boot `CONFIG_WATCHDOG_AUTOSTART`, 15 s, `WDT_BCM2835`), but the SD
+  card of rpi2b has older boot files (`walt.date`: 2022-02-14), kept on
+  purpose to test new images with old boot files. Possible explanation of
   the hang anyway: the rpi32 kernel has `WATCHDOG_HANDLE_BOOT_ENABLED=y`
   and `WATCHDOG_OPEN_TIMEOUT=0`, so it pets a watchdog left running by
   u-boot until userspace opens it, without limit. In the initramfs (or in
@@ -382,7 +381,8 @@ let it retry for longer.)
   kernel parameter `watchdog.open_timeout=<s>` (the kernel stops petting
   if userspace did not open the watchdog in time; then every rpi image
   must open it, or nodes would reboot), and a watchdog daemon in Alpine
-  images (e.g. busybox `watchdog`).
+  images (e.g. busybox `watchdog`). Draft issue:
+  `issue-drafts/rpi-watchdog-support.md`.
 
 ## 14. walt client: exit codes and failures
 
