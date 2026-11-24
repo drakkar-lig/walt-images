@@ -440,7 +440,7 @@ on the current rpi32-debian build, 2 passes with the fix.
 
 To do:
 - rebuild and publish the debian images to ship the fix.
-- `walt-image-shell-start` and `walt-image-shell-shutdown` never run the
-  scripts of `/bin/walt-image-shell-{start,shutdown}.d/`: `ls dir/*`
-  already prints full paths, and the loop prefixes the directory again.
-  No image of this repository uses these directories.
+- **Done** (commit `d281557`): `walt-image-shell-start` and
+  `walt-image-shell-shutdown` never ran the scripts of
+  `/bin/walt-image-shell-{start,shutdown}.d/` (`ls dir/*` already prints
+  full paths, and the loop prefixed the directory again).
