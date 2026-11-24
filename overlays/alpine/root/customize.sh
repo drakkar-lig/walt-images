@@ -33,9 +33,8 @@ esac
 
 if [ "$HAS_KEXEC" != 0 ]
 then
-    # add "testing" repo section
-    echo "@testing http://dl-cdn.alpinelinux.org/alpine/edge/testing" >> /etc/apk/repositories
-    PACKAGES="$PACKAGES kexec-tools@testing"
+    # (kexec-tools is in the community repository of the Alpine release)
+    PACKAGES="$PACKAGES kexec-tools"
 fi
 
 # Install packages
