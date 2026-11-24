@@ -434,13 +434,14 @@ with systemd-journald, systemd-tmpfiles-setup, systemd-sysusers, etc.
 failed. Native images (pc-trixie) were fine. `walt-image-shell-start` now
 resets the credentials of these units with drop-ins in
 `/run/systemd/system` (not saved in the image). postgresql worked even
-before the fix. New test: `tests/image-shell-debian.sh <image>` (postgresql in a
-derived image, built with `walt image build`; no node needed): 1 failure
-on the current rpi32-debian build, 2 passes with the fix.
+before the fix. New test: `tests/image-shell-debian.sh <image>`
+(postgresql in a derived image, built with `walt image build`; no node
+needed): 1 failure on the current rpi32-debian build, 2 passes with the
+fix.
 
 To do:
 - rebuild and publish the debian images to ship the fix.
-- **Done** (commit `3eeabd0`): `walt-image-shell-start` and
+- **Done** (commit `b63df23`): `walt-image-shell-start` and
   `walt-image-shell-shutdown` never ran the scripts of
   `/bin/walt-image-shell-{start,shutdown}.d/` (`ls dir/*` already prints
   full paths, and the loop prefixed the directory again).
