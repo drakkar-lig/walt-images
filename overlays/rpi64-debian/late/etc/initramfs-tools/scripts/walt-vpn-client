@@ -73,7 +73,12 @@ add_ssh_creds() {
 }
 
 mini_ldd() {
-    LD_TRACE_LOADED_OBJECTS=1 "$1" | \
+    # note: we use option --list of the dynamic loader, instead of
+    # running the binary with LD_TRACE_LOADED_OBJECTS=1: glibc ignores
+    # this variable for setuid and setgid binaries (secure mode), so
+    # such a binary would actually run (e.g., ssh-agent is setgid _ssh
+    # on debian trixie, and it printed "...; export SSH_AUTH_SOCK;").
+    /lib/ld-linux-aarch64.so.1 --list "$1" | \
               awk '{print $(NF-1)}' | \
               grep -v 'vdso'
 }
