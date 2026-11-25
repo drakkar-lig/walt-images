@@ -64,6 +64,26 @@ then
          [ -z \"\$failed\" ] || { echo \"\$failed\"; false; }"
 fi
 
+# ptpd (debian images): it must run on the interface used to reach the
+# walt server, except on VPN nodes (walt-vpn interface), where the unit
+# is skipped.
+if [ -x /usr/bin/walt-ptpd ]
+then
+    if [ -e /sys/class/net/walt-vpn ]
+    then
+        check "ptpd not started (VPN node)" \
+            "! systemctl is-active ptpd && \
+             systemctl show -p ConditionResult ptpd"
+    else
+        SMOKE_PTP_IFACE="$(ip route get "$SMOKE_SERVER" 2>/dev/null | \
+                           sed -n 's/.* dev \([^ ]*\).*/\1/p')"
+        check "ptpd on interface $SMOKE_PTP_IFACE" \
+            "[ -n '$SMOKE_PTP_IFACE' ] && \
+             args=\"\$(ps -o args= -C ptpd)\" && echo \"\$args\" && \
+             echo \"\$args\" | grep -q -- ' -i $SMOKE_PTP_IFACE\$'"
+    fi
+fi
+
 # openwrt: the walt-net device must be in the walt firewall zone
 if [ -f /etc/openwrt_release ]
 then
