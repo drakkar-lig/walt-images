@@ -568,3 +568,26 @@ booted-image`).
 To do:
 - `walt-server-cleanup`: `buildah umount` the node-rw containers (without
   removing them).
+
+## 18. debian images: ptpd on the WalT network interface
+
+**Done** (walt-images commit `f6fc2de`, pushed on `etienne-dev`):
+`/etc/ptpd.conf` hardcoded `eth0`, which does not exist with predictable
+interface names (pc-x86-64: `ens3`), nor is the WalT network on
+nanopi-r5c (`eth1`). The images now ship a native `ptpd.service` (replacing
+the unit generated from the SysV script) running `/usr/bin/walt-ptpd`,
+which starts `ptpd --foreground -i <iface>` on the interface used to reach
+the WalT server, and fails if it cannot be found. Not started in "walt
+image shell" containers, nor on RPi5 VPN nodes (`walt-vpn` interface).
+`TimeoutStopSec=5` (the generated unit could delay shutdown up to 35 s).
+Tested on a virtual node (ens3, PTP_LISTENING, failure cases).
+
+Rebuilt on 2026-11-25: rpi32/rpi64/pc-x86-64/nanopi-r5c debian, and the
+featured k3s-server, k3s-agent, rpi32-rtk-base, rpi32-sd-update,
+rpi32-serial-monitor. `tests/image-shell-debian.sh` passes on the 4 base
+images, `tests/smoke.sh -r rpi32-debian rpi3bp` passes (6/6).
+Publishing is left to the user.
+
+To do:
+- check on a nanopi-r5c (expect `-i eth1`) and on a real RPi5 VPN node
+  (unit skipped).
