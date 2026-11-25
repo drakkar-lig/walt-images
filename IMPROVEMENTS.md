@@ -615,3 +615,32 @@ To do:
 - update to a supported FreeBSD release (14.3 is end of life);
 - the image is 2.07 GB, git pulls python312 (220 MB): consider git-lite;
 - `pkg clean -a` does nothing under the emulation ("Nothing to do").
+
+## 20. rpi64-debian: RPi5 VPN node does not boot
+
+Found on 2026-11-25 with node rpi5b-vpn (RPi5 booting over the VPN).
+With the rpi64-debian image, built on 2026-11-25 and also with the build of
+2026-11-10 (image `rpi64-debian-trixie`), the node loops: it downloads
+`boot.sig` and `boot.img` over HTTP about every 55 seconds, and never
+opens its VPN SSH connection (no sshd / walt-server-vpn log, no packet from
+its IP on the server). The served `boot.sig` matches the served `boot.img`.
+The default image (April, NFS only) boots fine.
+
+Differences: the server supports the image feature `nbfs-281026`, so
+`activate-nbfs.sh` makes `boot.img` point to `boot-nbfs.img`
+(`root=/dev/nbfs`), and the kernel and initramfs are newer (boot.img 30 MiB
+vs 28 MiB). nbfs is probably not the cause (the failure is before the
+VPN, and the initramfs mounts the root filesystem after setting it up), but
+this was not confirmed: the console of the node is needed (panic message
+before the reboot, `panic=15`).
+
+Also: walt-server-vpn logs a traceback at each client connection
+(`OSError: [Errno 9] Bad file descriptor` in `services/vpn.py`, line 82),
+even when the boot succeeds.
+
+Consequence: the ptpd unit condition on VPN nodes (`walt-vpn` interface,
+item 18) could not be checked on a real node.
+
+To do:
+- get the serial console output of an RPi5 VPN node booting rpi64-debian;
+- check if forcing `boot-nfs.img` makes it boot.
