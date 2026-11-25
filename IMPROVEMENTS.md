@@ -591,3 +591,27 @@ Publishing is left to the user.
 To do:
 - check on a nanopi-r5c (expect `-i eth1`) and on a real RPi5 VPN node
   (unit skipped).
+
+## 19. pc-x86-64-freebsd image (prototype)
+
+**Imported** on 2026-11-25 from the prototype repository (`~/testbuild`)
+into `base/pc-x86-64/freebsd` (walt-images commit `6c1ddc5`, with a
+README.md on its design). Fixes found while testing it:
+- qemu bsd-user: rlimit resource numbers were not converted to Linux ones;
+  pkg 2.9.2 (`setrlimit(RLIMIT_NPROC, 0)`) then failed with "Unable to drop
+  privileges: no 'nobody' user", so the image did not build anymore
+  (new patch `qemu-bsd-rlimit.patch`).
+- `walt node save` (walt-python-packages `v11-fixes`, `b29d0bfd`):
+  `walt-dump-diff-tar` hard linked symlinks (FreeBSD's `link()` follows
+  them: "Cross-device link" on `/etc/motd`), failed on directories owned
+  by unnamed users (`chown UNKNOWN`), and linked all hidden whiteouts at a
+  wrong path (`$f` instead of `$wh`), so removals were lost.
+Tested on a virtual node (network-volatile): boot in 32 s, sshd,
+`walt node save` with an added and a removed file, `walt image build`
+with `FROM` and `pkg install`, `walt image cp`.
+
+To do:
+- other boot modes (network-persistent, hybrid-*), physical nodes;
+- update to a supported FreeBSD release (14.3 is end of life);
+- the image is 2.07 GB, git pulls python312 (220 MB): consider git-lite;
+- `pkg clean -a` does nothing under the emulation ("Nothing to do").
