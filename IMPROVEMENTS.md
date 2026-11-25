@@ -588,9 +588,9 @@ rpi32-serial-monitor. `tests/image-shell-debian.sh` passes on the 4 base
 images, `tests/smoke.sh -r rpi32-debian rpi3bp` passes (6/6).
 Publishing is left to the user.
 
-To do:
-- check on a nanopi-r5c (expect `-i eth1`) and on a real RPi5 VPN node
-  (unit skipped).
+Checked with `tests/smoke.sh` (new ptpd check in `tests/checks/common.sh`):
+rpi5b (`-i eth0`), nanopi-r5c (`-i eth1`), rpi5b-vpn (not started, VPN
+node, after the fix of item 20).
 
 ## 19. pc-x86-64-freebsd image (prototype)
 
@@ -618,29 +618,24 @@ To do:
 
 ## 20. rpi64-debian: RPi5 VPN node does not boot
 
-Found on 2026-11-25 with node rpi5b-vpn (RPi5 booting over the VPN).
-With the rpi64-debian image, built on 2026-11-25 and also with the build of
-2026-11-10 (image `rpi64-debian-trixie`), the node loops: it downloads
-`boot.sig` and `boot.img` over HTTP about every 55 seconds, and never
-opens its VPN SSH connection (no sshd / walt-server-vpn log, no packet from
-its IP on the server). The served `boot.sig` matches the served `boot.img`.
-The default image (April, NFS only) boots fine.
-
-Differences: the server supports the image feature `nbfs-281026`, so
-`activate-nbfs.sh` makes `boot.img` point to `boot-nbfs.img`
-(`root=/dev/nbfs`), and the kernel and initramfs are newer (boot.img 30 MiB
-vs 28 MiB). nbfs is probably not the cause (the failure is before the
-VPN, and the initramfs mounts the root filesystem after setting it up), but
-this was not confirmed: the console of the node is needed (panic message
-before the reboot, `panic=15`).
+**Fixed** on 2026-11-25 (walt-images commit `82c4650`, pushed). Found with
+node rpi5b-vpn: with rpi64-debian (builds of 2026-11-10 and 2026-11-25),
+the node rebooted in a loop (HTTP boot every ~55 s, never connecting to
+the VPN). The serial console showed `cp: can't stat 'export'`, then
+`Empty read.` (tap-wrap), then a kernel panic ("Attempted to kill
+init"). Cause: `mini_ldd` in the initramfs VPN client ran each binary with
+`LD_TRACE_LOADED_OBJECTS=1` to list its libraries; on trixie, `ssh-agent`
+is setgid `_ssh`, glibc ignores this variable for setgid binaries, so
+`ssh-agent` really ran and its output was parsed as libraries. Now
+`ld-linux-aarch64.so.1 --list` is used. With the fix, the node boots over
+the VPN in 37 s, and `tests/smoke.sh rpi64-debian rpi5b-vpn` passes (7/7,
+including "ptpd not started (VPN node)").
 
 Also: walt-server-vpn logs a traceback at each client connection
 (`OSError: [Errno 9] Bad file descriptor` in `services/vpn.py`, line 82),
 even when the boot succeeds.
 
-Consequence: the ptpd unit condition on VPN nodes (`walt-vpn` interface,
-item 18) could not be checked on a real node.
-
 To do:
-- get the serial console output of an RPi5 VPN node booting rpi64-debian;
-- check if forcing `boot-nfs.img` makes it boot.
+- rpi64-debian must be republished with this fix (rebuilt locally on
+  2026-11-25 at about 17:20).
+- check the walt-server-vpn traceback.
