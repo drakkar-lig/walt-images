@@ -516,3 +516,32 @@ To do:
   `walt-image-shell-shutdown` never ran the scripts of
   `/bin/walt-image-shell-{start,shutdown}.d/` (`ls dir/*` already prints
   full paths, and the loop prefixed the directory again).
+
+## 17. walt server: node-rw mounts left after an abrupt stop
+
+Found on 2026-11-25. After walt-server was stopped abruptly (see the
+NOTIFY_SOCKET bug below), the buildah node-rw containers of the
+network-persistent nodes stayed mounted (under
+`/var/lib/containers/storage/overlay/*/merged`). `walt-server-cleanup`
+(ExecStartPre) only unmounts mounts under `/var/lib/walt` and keeps
+node-rw containers (as it should, they hold the node changes), but does
+not unmount them. At the next start, `buildah mount --storage-opt
+mountopt=nfs_export=on` failed with "device or resource busy", and these
+nodes could not boot. Running `buildah umount` on these containers
+(server stopped) fixed it.
+
+Also, a process started in a private mount namespace while these
+overlays are mounted (e.g., a test using `unshare -m`) keeps copies of
+them, and the overlay directories stay "in use": the server cannot mount
+them again until this process ends. Such tests should use
+`unshare --propagation slave`.
+
+Related fix (walt-python-packages, `v11-fixes`, e930c4a6): podman run
+from server-blocking inherited NOTIFY_SOCKET and sent
+`MAINPID=<conmon>`; when the container exited, systemd stopped
+walt-server (this happened with `walt node cp <node>:<path>
+booted-image`).
+
+To do:
+- `walt-server-cleanup`: `buildah umount` the node-rw containers (without
+  removing them).
