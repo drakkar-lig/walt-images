@@ -1,0 +1,427 @@
+#!/bin/sh
+# walt-init overrides needed for this FreeBSD image.
+
+# These overrides work around the following facts:
+# * FreeBSD has no pivot_root command, so we just use chroot but need
+#   to move other mounts when switching root.
+# * FreeBSD's busybox has no mount or umount command.
+# * FreeBSD's set of filesystems is different from that of Linux, so we
+#   map names when possible, ignore /sys, etc.
+# * FreeBSD has no "overlay" filesystem, but it has a "mount -o union"
+#   technique we can use instead.
+# * FreeBSD has no support for "mount -o bind", but we can use
+#   "mount -t nullfs" instead; however it has the drawback that the
+#   source will then remain busy forever. For virtual filesystems,
+#   we can just mount them once more.
+# * FreeBSD has no support for "mount -o move", but we can just use
+#   our emulation of "mount -o bind" and then umount the source.
+#   Umount-ing the source fails in some cases (e.g., when we used
+#   nullfs) but we cannot do better, so we ignore unmounting errors.
+
+_freebsd_bind_proc() {
+    #echo bind "$@"
+    mount -t linprocfs procfs "$2"
+}
+
+_freebsd_bind_dev() {
+    #echo bind "$@"
+    mount -t devfs devfs "$2"
+    # exec using "$2"/<device> to release "$1"
+    walt_set_console "$2"
+}
+
+_freebsd_bind_sys() {
+    busybox true    # /sys does not exist on freebsd
+}
+
+_freebsd_bind_run() {
+    #echo bind "$@"
+    # We're supposed to have the same content
+    # in <finalfs>:/run and <memfs>:/run, but unfortunately
+    # since <memfs> is mounted at <finalfs>:/run/walt/mnt/memfs
+    # this makes a filesystem loop and FreeBSD does not allow that.
+    # So let's make separate tmpfs filesystems each time, and copy
+    # the current content (-x: within the filesystem boundary).
+    mount -t tmpfs tmpfs "$2"
+    cp -ax "$1"/. "$2"
+}
+
+_freebsd_bind_nullfs() {
+    #echo bind "$@"
+    mount -t nullfs "$1" "$2"
+}
+
+_freebsd_bind_function() {
+    local dir_name=$(busybox basename "$1")
+    case "$dir_name" in
+        "proc"|"dev"|"sys"|"run")
+            echo "_freebsd_bind_${dir_name}"
+            ;;
+        *)
+            echo "_freebsd_bind_nullfs"
+            ;;
+    esac
+}
+
+_freebsd_mount_bind() {
+    local func="$(_freebsd_bind_function "$1")"
+    $func "$1" "$2"
+}
+
+_freebsd_umount() {
+    local dir_name=$(busybox basename "$1")
+    if [ "$dir_name" = "sys" ]
+    then
+        return
+    fi
+    #echo umount "$@"
+    # Note: we ignore errors silently. After the next chroot, the
+    # filesystems we failed to umount will no longer be visible anyway.
+    nostderr umount "$1" || true
+}
+
+_detect_current_fsroot() {
+    # Command 'mount' lists the mounted filesystems with their mountpoint
+    # relative to the initial fs root.
+    # So for instance, after a chroot to /mnt/memfs, 'mount' will still
+    # list the remaining mounts relative to the initial fs root as /proc,
+    # /dev, etc., whereas mounts done after the chroot will be listed
+    # as /mnt/memfs/proc, /mnt/memfs/dev, etc.
+    # We use this to detect the current fs root (here /mnt/memfs), by
+    # temporarily mounting a filesystem at a known location and analysing
+    # how 'mount' lists it.
+    local test_mountpoint="$(busybox realpath "$1")"
+    # temporarily mount something at "$test_mountpoint"
+    mount -t linprocfs linprocfs "$test_mountpoint"
+    # parse 'mount' output
+    local fullpath=$(mount | busybox tail -n 1 | busybox awk '{print $3}')
+    # discard the temporary mount
+    umount "$test_mountpoint"
+    # the fs root is the mountpoint listed by 'mount' with the
+    # "$test_mountpoint" prefix removed.
+    local fsroot="${fullpath%${test_mountpoint}}"
+    # remove any ending '/', e.g. /mnt/memfs/ -> /mnt/memfs
+    fsroot="${fsroot%/}"
+    if [ -z "$fsroot" ]
+    then
+        echo "/"
+    else
+        echo "$fsroot"
+    fi
+}
+
+_get_visible_mounts() {
+    # list the mounts visible in the current environnement
+    # (possibly after one or several chroots).
+    # see comment about _detect_current_fsroot() above.
+    local fsroot test_mountpoint
+    test_mountpoint="$1"
+    fsroot="$(_detect_current_fsroot "$test_mountpoint")"
+    if [ "$fsroot" = "/" ]
+    then
+        mount | \
+           busybox awk '{print $3}' | \
+           busybox grep -vx "/"
+    else
+        mount | \
+           busybox awk '{print $3}' | \
+           busybox grep "^$fsroot" | \
+           busybox grep -vx "$fsroot" | \
+           busybox sed -e "s,^$fsroot,,"
+    fi
+}
+
+# When moving a mount tree /a/b to <dest> with a and b
+# both mountpoints, we should process in this order:
+# 1. bind /a to <dest>/a
+# 2. bind /a/b to <dest>/a/b
+# 3. umount /a/b
+# 4. umount /a
+# Note that binding and umounting are in a different
+# order.
+_freebsd_mount_move_many() {
+    local src dst sorted_mounts pending_umounts bind_func
+
+    # input lines are pairs of (<src>, <dst>) values
+
+    # 0. analyse
+    bind_info=""
+    umount_info=""
+    while read src dst
+    do
+        bind_func="$(_freebsd_bind_function "$src")"
+        # note: take care to have $src the first of the three values
+        # for the sort to be correct later.
+        bind_info="$bind_info $src $dst $bind_func"
+        # we can't umount the source of a nullfs mount
+        # (trying to do so seems to actually umount the destination!)
+        # so exclude them from the umount step below.
+        if [ "$bind_func" != "_freebsd_bind_nullfs" ]
+        then
+            umount_info="$umount_info $src"
+        fi
+    done
+
+    # 1. perform bind mounts in the right order
+    if [ -z "$bind_info" ]
+    then
+        return
+    fi
+    busybox echo "$bind_info" | \
+    busybox xargs -n3 busybox echo | \
+    busybox sort | \
+    while read src dst bind_func
+    do
+        $bind_func "$src" "$dst"
+    done
+
+    # 2. perform umounts in the reverse order
+    if [ -z "$umount_info" ]
+    then
+        return
+    fi
+    busybox echo "$umount_info" | \
+    busybox xargs -n1 busybox echo | \
+    busybox sort -r | \
+    while read src
+    do
+        _freebsd_umount "$src"
+    done
+}
+
+_freebsd_mount_move_tree() {
+    local src_dir_name src dst
+    src=$(busybox realpath "$1")
+    dst="$2"
+    shift 2
+
+    src_dir_name=$(busybox basename "$src")
+    if [ "$src_dir_name" = "sys" ]
+    then
+        return
+    fi
+
+    case "$src_dir_name" in
+        "sys")
+            return
+            ;;
+        "proc"|"dev")
+            # fast path: we don't have to move a whole subtree
+            _freebsd_mount_bind "$src" "$dst"
+            _freebsd_umount "$src"
+            return
+            ;;
+        *)
+            # slow path: continue below, move the whole sub-tree
+            ;;
+    esac
+
+    # about the pipe command below:
+    # 1. we consider visible mounts.
+    # 2. we keep only those of $src mount tree.
+    # 3. we transform lines 'src[/<...>]' to 'src[/<...>] dst[/<...>]'
+    # 4. we move those mounts in the right order
+    _get_visible_mounts "$dst" | \
+    busybox grep "^$src" | \
+    busybox sed -e "s,$src\(.*\),$src\1 $dst\1," | \
+    _freebsd_mount_move_many
+}
+
+walt_mount() {
+    # check if called with no args
+    if [ -z "$1" ]
+    then
+        mount || retcode=$?
+        return $retcode
+    fi
+    actual_args="walt_mount $*"
+    new_args=""
+    # translate linux mount commands to freebsd-compatible ones
+    while [ ! -z "$1" ]
+    do
+        if [ "$1" = "-o" -a "$2" = "bind" ]
+        then
+            shift 2
+            retcode=0
+            _freebsd_mount_bind "$1" "$2" || retcode=$?
+            return $retcode
+        elif [ "$1" = "-o" -a "$2" = "move" ]
+        then
+            shift 2
+            retcode=0
+            _freebsd_mount_move_tree "$1" "$2" || retcode=$?
+            return $retcode
+        elif [ "$1" = "-o" -a "$2" = "remount,rw" ]
+        then
+            shift 2
+            mount -u -w "$1" || retcode=$?
+            return $retcode
+        elif [ "$1" = "-o" -a "$2" = "remount,ro" ]
+        then
+            shift 2
+            mount -u -r "$1" || retcode=$?
+            return $retcode
+        elif [ "$1" = "-t" ]
+        then
+            fstype="$2"
+            case "$fstype" in
+                "devtmpfs")
+                    fstype="devfs"
+                    ;;
+                "proc")
+                    fstype="linprocfs"
+                    ;;
+                "tmpfs"|"nfs")
+                    # freebsd has support for this, just keep it
+                    ;;
+                "overlay"|"overlayfs")
+                    echo "handle overlay:" >&2
+                    echo "$actual_args" >&2
+                    return 1
+                    ;;
+                "sysfs")
+                    # FreeBSD has no sysfs, ignoring silently.
+                    return 0
+                    ;;
+                *)
+                    echo "walt-init-overrides: Unknown filesystem ${fstype}!" >&2
+                    return 1
+                    ;;
+            esac
+            new_args="$new_args -t $fstype"
+            shift 2
+        else
+            new_args="$new_args $1"
+            shift
+        fi
+    done
+    mount $new_args
+}
+
+walt_umount() {
+    if [ "$1" = "-a" ]
+    then
+        nostderr umount -a || true
+    else
+        _freebsd_umount "$1"
+    fi
+}
+
+# FreeBSD has no pivot_root command.
+# We emulate it by moving other mounts to their corresponding paths
+# at "$put_old" and then using chroot.
+walt_switch_root_fs() {
+    local visible_mounts put_old
+    put_old="$1"
+    shift
+
+    busybox mkdir -p "$put_old"
+    visible_mounts="$(_get_visible_mounts "$put_old")"
+
+    # bind the old root at $put_old
+    _freebsd_mount_bind / "$put_old"
+
+    # about the pipe command below:
+    # 1. we consider visible mounts.
+    # 2. we ignore submounts of the current directory since
+    #    these are already where they should be.
+    # 3. we transform lines '/<...>' to '/<...> $put_old/<...>'
+    # 4. we move those mounts in the right order
+    busybox echo "$visible_mounts" | \
+    busybox grep -v "^$PWD" | \
+    busybox sed -e "s,\(.*\),\1 $put_old\1," | \
+    _freebsd_mount_move_many
+
+    # change root
+    exec busybox chroot . "$@"
+}
+
+walt_preinit() {
+    TERM=vt100 clear
+}
+
+walt_set_console() {
+    local devname devpath
+    if [ "$walt_vnode_mode" -eq 1 ]
+    then
+        devname="ttyu0"
+    else
+        devname="console"
+    fi
+    if [ -z "$1" ]
+    then
+        devpath="dev/$devname"
+    else
+        devpath="$1/dev/$devname"
+    fi
+    [ ! -e "$devpath" ] || exec <$devpath >$devpath 2>&1
+}
+
+walt_load_kernel_modules() {
+    # the default function of walt init uses modprobe,
+    # freebsd uses kldload instead.
+    # we don't need more modules anyway.
+    true
+}
+
+walt_populate_memfs_custom() {
+    # dynamic linker libraries
+    mkdir -p libexec usr/libexec
+    cp -a /libexec/ld-elf.so.1 libexec/          # dynamic linker
+    cp -a /usr/libexec/ld-elf.so.1 usr/libexec/  # symlink
+
+    # filesystem mounting executables
+    copy_exec_to_memfs mount_nullfs
+    copy_exec_to_memfs mount_unionfs
+    mkdir sbin
+    mv bin/mount* sbin/
+
+    # copy cp because we will need option "-x"
+    # the busybox applet does not provide
+    copy_exec_to_memfs cp
+}
+
+walt_mount_persistent()
+{
+    local options="rw,nfsv3,nolockd"
+    local mounted_var_db
+
+    if [ "$1" = "--sync" ]
+    then
+        # ignore, FreeBSD has no "sync" mount option
+        shift
+    fi
+
+    # avoid "mount_nfs: can't update /var/db/mounttab" warning
+    # if we are still on the read-only NFS root
+    mounted_var_db=0
+    if [ -d /var/db ]
+    then
+        mount -t tmpfs tmpfs /var/db
+        mounted_var_db=1
+    fi
+
+    # Mount the share
+    walt_mount -t nfs -o "$options" "$1" "$2"
+
+    # cleanup
+    if [ "$mounted_var_db" -eq 1 ]
+    then
+        umount /var/db
+    fi
+}
+
+walt_mount_union()
+{
+    local lowerdir="$1"
+    local upperdir="$2"
+    local workdir="$3"
+    local uniondir="$4"
+
+    # Unlike with Linux's overlay filesystem, with the "mount -t unionfs"
+    # technique we don't need the workdir.
+
+    mount -t nullfs "$lowerdir" "$uniondir"
+    mount -t unionfs -o copymode=transparent \
+                     -o whiteout=whenneeded "$upperdir" "$uniondir"
+}

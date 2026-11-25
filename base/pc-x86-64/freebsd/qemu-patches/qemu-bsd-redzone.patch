@@ -1,0 +1,190 @@
+diff --git a/bsd-user/linux/os-time.c b/bsd-user/linux/os-time.c
+index 6e97ddb3b9..c869426dfd 100644
+--- a/bsd-user/linux/os-time.c
++++ b/bsd-user/linux/os-time.c
+@@ -27,6 +27,7 @@
+ #include "qemu.h"
+ #include "qemu-os.h"
+ 
++_Atomic (CPUState *) itimer_real_cpu;
+ 
+ /*
+  * FreeBSD time conversion functions
+diff --git a/bsd-user/linux/os-time.h b/bsd-user/linux/os-time.h
+index b1c098cf8f..47c9611171 100644
+--- a/bsd-user/linux/os-time.h
++++ b/bsd-user/linux/os-time.h
+@@ -1070,6 +1070,12 @@ static inline abi_long do_freebsd_setitimer(int arg1, abi_ulong arg2, abi_ulong
+    } else {
+        pvalue = NULL;
+    }
++
++#if defined(__linux__)
++   if (arg1 == ITIMER_REAL) {
++       qatomic_set(&itimer_real_cpu, thread_cpu);
++   }
++#endif
+    ret = get_errno(setitimer(arg1, pvalue, &ovalue));
+    if (!is_error(ret) && arg3) {
+        if (h2t_freebsd_timeval(&ovalue.it_interval, arg3)
+diff --git a/bsd-user/linux/qemu-os.h b/bsd-user/linux/qemu-os.h
+index 1f561cfd12..eec5bf8beb 100644
+--- a/bsd-user/linux/qemu-os.h
++++ b/bsd-user/linux/qemu-os.h
+@@ -83,6 +83,7 @@ typedef struct fhandle  fhandle_t;
+ #define        nitems(x)       (sizeof((x)) / sizeof((x)[0]))
+ 
+ #if defined(__linux__)
++extern _Atomic (struct CPUState *) itimer_real_cpu;
+ int safe_dup(int oldfd);
+ int safe_dup2(int oldfd, int newfd);
+ void qemu_track_write_fd(int fd, ssize_t nbytes);
+diff --git a/bsd-user/signal.c b/bsd-user/signal.c
+index 148971aa17..d437ac5cfa 100644
+--- a/bsd-user/signal.c
++++ b/bsd-user/signal.c
+@@ -30,6 +30,9 @@
+ #include "gdbstub/user.h"
+ 
+ #include <sys/ucontext.h>
++#if defined(__linux__)
++#include <sys/syscall.h>
++#endif
+ #include <sys/resource.h>
+ 
+ #include "signal-common.h"
+@@ -651,6 +654,28 @@ static void host_signal_handler(int host_sig, siginfo_t *info, void *puc)
+     if (cpu == NULL) {
+         return;
+     }
++
++#if defined(__linux__)
++    /*
++     * ITIMER_REAL delivers SIGALRM to an arbitrary Linux thread. In QEMU
++     * bsd-user, multiple FreeBSD "processes" are Linux threads in one process.
++     * If SIGALRM arrives at the wrong CPU thread (e.g. git-index-pack just
++     * after exec, before it installs its own SIGALRM handler), the guest
++     * process dies with the default action (terminate) instead of being
++     * handled by the process that set the timer.
++     *
++     * Re-route SIGALRM to the CPU that called setitimer(ITIMER_REAL).
++     */
++    if (host_sig == SIGALRM) {
++        CPUState *owner = qatomic_read(&itimer_real_cpu);
++        if (owner != NULL && owner != cpu) {
++            TaskState *ots = get_task_state(owner);
++            /* tgkill delivers to a specific thread within our process. */
++            syscall(SYS_tgkill, getpid(), ots->ts_tid, SIGALRM);
++            return;
++        }
++    }
++#endif
+     ts = get_task_state(cpu);
+ 
+     if (host_sig == host_interrupt_signal) {
+@@ -931,14 +956,26 @@ static inline abi_ulong get_sigframe(struct target_sigaction *ka,
+ {
+     TaskState *ts = get_task_state(thread_cpu);
+     abi_ulong sp;
++    bool on_altstack = false;
+ 
+     /* Use default user stack */
+     sp = get_sp_from_cpustate(env);
+ 
+     if ((ka->sa_flags & TARGET_SA_ONSTACK) && sas_ss_flags(ts, sp) == 0) {
+         sp = ts->sigaltstack_used.ss_sp + ts->sigaltstack_used.ss_size;
++        on_altstack = true;
+     }
+ 
++#ifdef TARGET_X86_64
++    /*
++     * FreeBSD amd64 sendsig() allocates signal frames below the 128-byte
++     * red zone on the current user stack.
++     */
++    if (!on_altstack) {
++        sp -= 128;
++    }
++#endif
++
+     return ROUND_DOWN(sp - frame_size, TARGET_SIGSTACK_ALIGN);
+ }
+ 
+diff --git a/bsd-user/x86_64/signal.c b/bsd-user/x86_64/signal.c
+index 0b56a0f486..c211289ba7 100644
+--- a/bsd-user/x86_64/signal.c
++++ b/bsd-user/x86_64/signal.c
+@@ -60,21 +60,23 @@ abi_long setup_sigframe_arch(CPUX86State *env, abi_ulong frame_addr,
+ }
+ 
+ static void get_fpcontext(CPUX86State *env, target_mcontext_t *mcp, char **xfpusave, size_t *xfpusave_len) {
+-    /* Mark FPU ownership */
+-    mcp->mc_ownedfp = (env->fp_status.float_exception_flags != 0);
+-
+-    /* Copy the FPU state */
+-    static_assert(sizeof(mcp->mc_fpstate) >= sizeof(env->fpregs), "sizeof(mcp->mc_fpstate) < sizeof(env->fpregs)");
+-    memcpy(&mcp->mc_fpstate[0], &env->fpregs, sizeof(env->fpregs));
+-
+-    /* Indicate FP format */
+-    mcp->mc_fpformat = 0;
+-
+-    /* Handle extended state (XSAVE) if supported */
+-    if (xfpusave == NULL) {
+-        return;
++    /*
++     * Save the full FP/XMM state using FXSAVE format.
++     * This includes x87, MMX, XMM0-XMM15, and MXCSR.
++     * XMM registers must be preserved across signal delivery or
++     * SSE-accelerated code (e.g., SHA1 in git-index-pack) will be corrupted.
++     */
++    static_assert(sizeof(mcp->mc_fpstate) >= sizeof(X86LegacyXSaveArea),
++                  "mc_fpstate too small for fxsave");
++    cpu_x86_fxsave(env, &mcp->mc_fpstate[0], sizeof(mcp->mc_fpstate));
++
++    mcp->mc_ownedfp = _MC_FPOWNED_FPU;
++    mcp->mc_fpformat = _MC_FPFMT_XMM;
++
++    if (xfpusave != NULL) {
++        *xfpusave = NULL;
++        *xfpusave_len = 0;
+     }
+-    abort();
+ }
+ 
+ #define TARGET_GET_MC_CLEAR_RET 1
+@@ -127,25 +129,14 @@ abi_long get_mcontext(CPUX86State *env,
+ }
+ 
+ static void set_fpcontext(CPUX86State *env, const target_mcontext_t *mcp, const char *xfpusave, size_t xfpusave_len) {
+-    /* Restore FPU ownership status */
+-    if (mcp->mc_ownedfp) {
+-        env->fp_status.float_exception_flags = 1; /* Indicate FPU is in use */
+-    } else {
+-        env->fp_status.float_exception_flags = 0; /* No FPU activity */
+-    }
+-
+-    /* Restore the FPU state */
+-    static_assert(sizeof(env->fpregs) <= sizeof(mcp->mc_fpstate),
+-                  "sizeof(env->fpregs) > sizeof(mcp->mc_fpstate)");
+-    memcpy(&env->fpregs, &mcp->mc_fpstate[0], sizeof(env->fpregs));
+-
+-    if (mcp->mc_fpformat != 0) {
+-        /* Unsupported FP format, abort for now */
+-        abort();
+-    }
+-
+-    if (xfpusave != NULL || xfpusave_len > 0) {
+-        abort();
++    /*
++     * Restore the full FP/XMM state using FXRSTOR format.
++     * This includes x87, MMX, XMM0-XMM15, and MXCSR.
++     */
++    if (mcp->mc_ownedfp != _MC_FPOWNED_NONE) {
++        static_assert(sizeof(mcp->mc_fpstate) >= sizeof(X86LegacyXSaveArea),
++                      "mc_fpstate too small for fxrstor");
++        cpu_x86_fxrstor(env, (void *)&mcp->mc_fpstate[0], sizeof(mcp->mc_fpstate));
+     }
+ }
+ 
+-- 
+2.39.5
+

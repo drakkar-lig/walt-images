@@ -1,0 +1,45 @@
+diff --git a/bsd-user/bsd-ioctl.c b/bsd-user/bsd-ioctl.c
+index 3e936fce42..c827794ee8 100644
+--- a/bsd-user/bsd-ioctl.c
++++ b/bsd-user/bsd-ioctl.c
+@@ -347,8 +347,10 @@ abi_long do_bsd_ioctl(int fd, abi_long cmd, abi_long arg)
+     ie = ioctl_entries;
+     for (;;) {
+         if (ie->target_cmd == 0) {
+-            gemu_log("QEMU unsupported ioctl: ");
+-            log_unsupported_ioctl(cmd);
++            if (do_strace) {
++                gemu_log("QEMU unsupported ioctl: ");
++                log_unsupported_ioctl(cmd);
++            }
+             return -TARGET_ENOSYS;
+         }
+         if (ie->target_cmd == cmd) {
+diff --git a/bsd-user/elfload.c b/bsd-user/elfload.c
+index 6c575c4736..9e55d17a91 100644
+--- a/bsd-user/elfload.c
++++ b/bsd-user/elfload.c
+@@ -534,7 +534,7 @@ load_elf_sections(const char *image_name, const struct elfhdr *hdr,
+                   abi_ulong *baddrp)
+ {
+     struct elf_phdr *elf_ppnt;
+-    abi_ulong baddr = {};
++    abi_ulong baddr = 0;
+     int i;
+     bool first;
+     Error *err = NULL;
+diff --git a/bsd-user/linux/target_os_defs.h b/bsd-user/linux/target_os_defs.h
+index bd07183d51..cb202c3751 100644
+--- a/bsd-user/linux/target_os_defs.h
++++ b/bsd-user/linux/target_os_defs.h
+@@ -1810,6 +1810,7 @@ static const typeof(KERN_PROC_VMMAP) HOST_KERN_PROC_VMMAP = KERN_PROC_VMMAP;
+ #endif /* found in: sys/sysctl.h */
+ #undef KERN_PROC_VMMAP
+ #define KERN_PROC_VMMAP		32	/* VM map entries for process */
++#define KERN_PROC_UMASK		39	/* process umask */
+ #if defined(KERN_USRSTACK) && !defined(HOST_KERN_USRSTACK)
+ static const typeof(KERN_USRSTACK) HOST_KERN_USRSTACK = KERN_USRSTACK;
+ #endif /* found in: sys/sysctl.h */
+-- 
+2.39.5
+

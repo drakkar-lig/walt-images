@@ -1,0 +1,1010 @@
+diff --git a/bsd-user/bsd-socket.h b/bsd-user/bsd-socket.h
+index 9a35430b60..2bcdadbb58 100644
+--- a/bsd-user/bsd-socket.h
++++ b/bsd-user/bsd-socket.h
+@@ -274,11 +274,31 @@ fail:
+     return ret;
+ }
+ 
++/*
++ * Translate FreeBSD address family constants to Linux equivalents.
++ * FreeBSD and Linux share many AF values but diverge significantly above AF_INET.
++ */
++static inline int bsd_to_linux_af(int bsd_af)
++{
++    /* FreeBSD AF constants that differ from Linux */
++    switch (bsd_af) {
++    case 10: return AF_INET; /* AF_CCITT in BSD, treat unknown as INET */
++    case 28: return AF_INET6; /* FreeBSD AF_INET6=28, Linux AF_INET6=10 */
++    case 17: return AF_NETLINK; /* FreeBSD AF_ROUTE=17, Linux AF_NETLINK=16 */
++    case 38: return AF_NETLINK; /* FreeBSD AF_NETLINK=38, Linux AF_NETLINK=16 */
++    default:
++        /* AF_UNIX=1, AF_INET=2, AF_APPLETALK=16(bsd)/5(linux) etc. */
++        /* For the common cases (AF_UNIX=1, AF_INET=2), values are the same */
++        return bsd_af;
++    }
++}
++
+ /* socket(2) */
+ static inline abi_long do_bsd_socket(abi_long domain, abi_long type,
+                                      abi_long protocol)
+ {
+-    return get_errno(socket(domain, type, protocol));
++    int linux_domain = bsd_to_linux_af((int)domain);
++    return get_errno(socket(linux_domain, type, protocol));
+ }
+ 
+ /* shutdown(2) */
+diff --git a/bsd-user/linux/os-proc.h b/bsd-user/linux/os-proc.h
+index 7adf340a3f..c49867e217 100644
+--- a/bsd-user/linux/os-proc.h
++++ b/bsd-user/linux/os-proc.h
+@@ -22,6 +22,7 @@
+ 
+ #include <sys/param.h>
+ #include <sys/signal.h>
++#include <sys/syscall.h>
+ #include <sys/types.h>
+ #include <sys/wait.h>
+ #include <linux/sched.h>
+@@ -304,16 +305,23 @@ static inline abi_long do_freebsd_pdfork(void *cpu_env, abi_ulong target_fdp,
+ {
+     abi_long ret;
+     abi_ulong child_flag;
+-    int fd;
++    int fd = -1;
+ 
+     fork_start();
+ #if !defined(__linux__)
+     ret = pdfork(&fd, flags);
+ #else
+     assert(flags == 0);
+-    struct clone_args ca = {.flags = CLONE_PIDFD|CLONE_CHILD_CLEARTID|CLONE_CHILD_SETTID};
+-    ca.pidfd = (uintptr_t)&fd;
+-    ret = get_errno(fast_clone3(&ca, sizeof(ca)));
++    ret = get_errno(fork());
++    if (ret > 0) {
++        /* parent: open a pidfd for the child */
++        fd = syscall(SYS_pidfd_open, (pid_t)ret, 0);
++        if (fd < 0) {
++            fd = -1;
++        }
++    } else if (ret == 0) {
++        fd = -1;
++    }
+ #endif
+     if (ret == 0) {
+         /* child */
+@@ -322,8 +330,8 @@ static inline abi_long do_freebsd_pdfork(void *cpu_env, abi_ulong target_fdp,
+     } else {
+         /* parent */
+         child_flag = 0;
+-        if (put_user_s32(fd, target_fdp)) {
+-            return -TARGET_EFAULT;
++        if (ret > 0 && put_user_s32(fd, target_fdp)) {
++            ret = -TARGET_EFAULT;
+         }
+     }
+ 
+diff --git a/bsd-user/linux/os-socket.h b/bsd-user/linux/os-socket.h
+index cb7913dc77..52a469ae57 100644
+--- a/bsd-user/linux/os-socket.h
++++ b/bsd-user/linux/os-socket.h
+@@ -30,6 +30,38 @@
+ ssize_t safe_recvmsg(int s, struct msghdr *msg, int flags);
+ ssize_t safe_sendmsg(int s, const struct msghdr *msg, int flags);
+ 
++/*
++ * Translate ifi_flags in Linux RTM_NEWLINK netlink messages to FreeBSD format.
++ * Key differences:
++ *   IFF_MULTICAST: Linux=0x1000, FreeBSD=0x8000
++ *   IFF_LOWER_UP:  Linux=0x10000 == FreeBSD IFF_CANTCONFIG (causes match_if_flags to filter out ALL interfaces!)
++ *                  FreeBSD IFF_LOWER_UP (IFF_NETLINK_1) = 0x1000000
++ */
++static void translate_netlink_rtm_newlink(void *buf, size_t len)
++{
++    char *p = buf;
++    /* nlmsghdr is 16 bytes, ifinfomsg is 16 bytes */
++    while (len >= 16) {
++        uint32_t nlmsg_len  = ((uint32_t *)p)[0];
++        uint16_t nlmsg_type = ((uint16_t *)p)[2];
++        if (nlmsg_len < 16 || nlmsg_len > len)
++            break;
++        if (nlmsg_type == 16 /* RTM_NEWLINK */ && (int)(nlmsg_len - 16) >= 16) {
++            /* ifi_flags is at offset 16 (nlmsghdr) + 8 (ifi_family+pad+type+index) = 24 */
++            uint32_t *ifi_flags_ptr = (uint32_t *)(p + 24);
++            uint32_t flags = *ifi_flags_ptr;
++            /* Move IFF_MULTICAST from Linux bit 12 to FreeBSD bit 15 */
++            if (flags & 0x1000) { flags &= ~0x1000; flags |= 0x8000; }
++            /* Move IFF_LOWER_UP from Linux bit 16 to FreeBSD IFF_NETLINK_1 bit 24 */
++            if (flags & 0x10000) { flags &= ~0x10000; flags |= 0x1000000; }
++            *ifi_flags_ptr = flags;
++        }
++        uint32_t next = (nlmsg_len + 3) & ~3u;
++        p   += next;
++        len -= next;
++    }
++}
++
+ /* do_sendrecvmsg_locked() Must return target values and target errnos. */
+ static abi_long do_sendrecvmsg_locked(int fd, struct target_msghdr *msgp,
+                                       int flags, int send)
+@@ -103,6 +135,16 @@ static abi_long do_sendrecvmsg_locked(int fd, struct target_msghdr *msgp,
+         ret = get_errno(safe_recvmsg(fd, &msg, flags));
+         if (!is_error(ret)) {
+             len = ret;
++            /* Translate Linux ifi_flags to FreeBSD format in RTM_NEWLINK messages */
++            {
++                ssize_t remaining = len;
++                for (int _i = 0; _i < (int)count && remaining > 0; _i++) {
++                    size_t scan = remaining < (ssize_t)vec[_i].iov_len
++                                  ? (size_t)remaining : vec[_i].iov_len;
++                    translate_netlink_rtm_newlink(vec[_i].iov_base, scan);
++                    remaining -= (ssize_t)scan;
++                }
++            }
+             if (msg.msg_control != NULL) {
+                 ret = h2t_freebsd_cmsg(msgp, &msg);
+             } else {
+@@ -296,6 +338,20 @@ static inline abi_long do_bsd_setsockopt(int sockfd, int level, int optname,
+         }
+         break;
+ 
++    case SOL_NETLINK: /* 270 — same value on FreeBSD and Linux */
++        /* Pass netlink socket options through to the host kernel unchanged.
++         * FreeBSD and Linux share the same SOL_NETLINK value (270) and
++         * the same option names (NETLINK_EXT_ACK=11, etc.). */
++        if (optlen < sizeof(uint32_t)) {
++            return -TARGET_EINVAL;
++        }
++        if (get_user_u32(val, optval_addr)) {
++            return -TARGET_EFAULT;
++        }
++        ret = get_errno(setsockopt(sockfd, SOL_NETLINK, optname, &val,
++                    sizeof(val)));
++        break;
++
+     case TARGET_SOL_SOCKET:
+         switch (optname) {
+         /* Options with 'int' argument.  */
+@@ -359,8 +415,11 @@ static inline abi_long do_bsd_setsockopt(int sockfd, int level, int optname,
+             goto unimplemented;
+ 
+         case TARGET_SO_NOSIGPIPE:
+-            optname = SO_NOSIGPIPE;
+-            break;
++            /* Linux has no SO_NOSIGPIPE; silently succeed so callers that
++             * treat failure as fatal (e.g. curl) are not broken.  The Linux
++             * equivalent is the MSG_NOSIGNAL flag on send/write, which
++             * libcurl already uses. */
++            return 0;
+ 
+         case TARGET_SO_TIMESTAMP:
+             optname = SO_TIMESTAMP;
+@@ -378,6 +437,11 @@ static inline abi_long do_bsd_setsockopt(int sockfd, int level, int optname,
+             optname = SO_ERROR;
+             break;
+ 
++        case TARGET_SO_TS_CLOCK:
++            /* FreeBSD-specific clock selection for SO_TIMESTAMP; no Linux
++             * equivalent, silently ignore so ping/other tools still work. */
++            return 0;
++
+ #ifdef SO_USER_COOKIE
+         case TARGET_SO_USER_COOKIE:
+             optname = SO_USER_COOKIE;
+diff --git a/bsd-user/linux/os-stat.h b/bsd-user/linux/os-stat.h
+index 62d4ec2b27..c063ffbc02 100644
+--- a/bsd-user/linux/os-stat.h
++++ b/bsd-user/linux/os-stat.h
+@@ -757,6 +757,10 @@ static inline abi_long do_freebsd_fcntl(abi_long arg1, abi_long arg2,
+     struct target_freebsd_flock *target_fl;
+     const abi_long STUB = 0;
+ 
++    if (arg2 == TARGET_F_ISUNIONSTACK) {
++        return 0;
++    }
++
+     host_cmd = target_to_host_fcntl_cmd(arg2, arg3);
+     if (host_cmd.cmd < 0) {
+         return host_cmd.cmd;
+diff --git a/bsd-user/linux/os-sys.c b/bsd-user/linux/os-sys.c
+index dbca602b04..a89066bce5 100644
+--- a/bsd-user/linux/os-sys.c
++++ b/bsd-user/linux/os-sys.c
+@@ -37,9 +37,42 @@
+ #elif defined(HAVE_BSD_STRING_H)
+ #include <bsd/string.h>
+ #endif
++#ifdef __linux__
++#include <ifaddrs.h>
++#include <sys/ioctl.h>
++#include <netinet/in.h>
++#ifndef ARPHRD_ETHER
++#define ARPHRD_ETHER    1
++#endif
++#ifndef ARPHRD_LOOPBACK
++#define ARPHRD_LOOPBACK 772
++#endif
++#endif /* __linux__ */
+ 
+ #include <string.h>
+ 
++/*
++ * FreeBSD uses PF_ROUTE=17 for the routing sysctl subtree; Linux defines
++ * PF_ROUTE=16 (a different protocol family), so we need our own constant to
++ * match the MIB values sent by FreeBSD programs.
++ */
++#ifdef __linux__
++#define BSD_PF_ROUTE 17
++/* FreeBSD PF_INET6=28; Linux uses 10 */
++#define BSD_PF_INET6           28
++/* FreeBSD net.inet6.ip6.accept_rtadv = net[4].inet6[28].ipv6[41].38 */
++#define BSD_IPV6CTL_ACCEPT_RTADV 38
++/* CTL_USER not defined on Linux */
++#define BSD_CTL_USER           8
++#define BSD_USER_LOCALBASE     21
++/* CTL_SECURITY not defined on Linux */
++#define BSD_CTL_SECURITY       5
++#else
++#define BSD_PF_ROUTE PF_ROUTE
++#define BSD_PF_INET6 PF_INET6
++#define BSD_IPV6CTL_ACCEPT_RTADV IPV6CTL_ACCEPT_RTADV
++#endif
++
+ #include "bsd-proc.h"
+ 
+ #include "target_arch_sysarch.h"
+@@ -49,6 +82,7 @@
+ 
+ #include "os-dev_proc.h"
+ 
++
+ /*
+  * Length for the fixed length types.
+  * 0 means variable length for strings and structures
+@@ -229,6 +263,30 @@ handle_kern_sched_cpusetsize(void *holdp, size_t oldlen, size_t *holdlen, const
+     return handle_generic_const_int(holdp, oldlen, holdlen, 1);
+ }
+ 
++static int
++handle_kern_features_inet(void *holdp, size_t oldlen, size_t *holdlen, const void *hnewp, size_t hnewplen)
++{
++    return handle_generic_const_int(holdp, oldlen, holdlen, 1);
++}
++
++static int
++handle_kern_features_inet6(void *holdp, size_t oldlen, size_t *holdlen, const void *hnewp, size_t hnewplen)
++{
++    return handle_generic_const_int(holdp, oldlen, holdlen, 0);
++}
++
++static int
++handle_security_jail_jailed(void *holdp, size_t oldlen, size_t *holdlen, const void *hnewp, size_t hnewplen)
++{
++    return handle_generic_const_int(holdp, oldlen, holdlen, 0);
++}
++
++static int
++handle_kern_boottrace_enabled(void *holdp, size_t oldlen, size_t *holdlen, const void *hnewp, size_t hnewplen)
++{
++    return handle_generic_const_int(holdp, oldlen, holdlen, 0);
++}
++
+ static int
+ handle_dummy(void *holdp, size_t oldlen, size_t *holdlen, const void *hnewp, size_t hnewplen)
+ {
+@@ -269,6 +327,11 @@ static struct handler handlers[] = {
+     {"sysctl.name2oid", handle_sysctl_name2oid, CTLTYPE_INT | CTLFLAG_RW | CTLFLAG_ANYBODY | CTLFLAG_MPSAFE | CTLFLAG_CAPRW},
+     {"sysctl.name", handle_sysctl_name, CTLFLAG_RD | CTLFLAG_MPSAFE | CTLFLAG_CAPRD, true},
+     {"sysctl.oidfmt", handle_sysctl_oidfmt, CTLFLAG_RD | CTLFLAG_MPSAFE | CTLFLAG_CAPRD, true},
++    {"kern.features.inet", handle_kern_features_inet, CTLTYPE_UINT | CTLFLAG_RD | CTLFLAG_CAPRD | CTLFLAG_MPSAFE},
++    {"kern.features.inet6", handle_kern_features_inet6, CTLTYPE_UINT | CTLFLAG_RD | CTLFLAG_CAPRD | CTLFLAG_MPSAFE},
++    {"security.jail.jailed", handle_security_jail_jailed, CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_CAPRD | CTLFLAG_MPSAFE},
++    {"kern.boottrace.enabled", handle_kern_boottrace_enabled, CTLTYPE_INT | CTLFLAG_RD | CTLFLAG_MPSAFE},
++    {"kern.sched.cpusetsizemin", handle_kern_sched_cpusetsizemin, CTLTYPE_UINT | CTLFLAG_RD | CTLFLAG_CAPRD},
+     {NULL, NULL} // Terminator
+ };
+ 
+@@ -278,9 +341,16 @@ enum extra_oids {
+     KERN_SCHED = 0x70000000,
+     KERN_SCHED_CPUSETSIZEMIN,
+     KERN_SCHED_CPUSETSIZE,
++    KERN_FEATURES,
++    KERN_FEATURES_INET,
++    KERN_FEATURES_INET6,
+     CTL_VM,
+     HW_PAGESIZES,
+     HW_AVAILPAGES,
++    BSD_SECURITY_JAIL,
++    BSD_JAIL_JAILED,
++    KERN_BOOTTRACE,
++    KERN_BOOTTRACE_ENABLED,
+ };
+ 
+ static inline int sysctlnametomib(const char *name, int *mibp, size_t *sizep)
+@@ -321,6 +391,13 @@ static inline int sysctlnametomib(const char *name, int *mibp, size_t *sizep)
+             NAME("cpusetsizemin", KERN_SCHED_CPUSETSIZEMIN, )
+             NAME("cpusetsize", KERN_SCHED_CPUSETSIZE, )
+         )
++        NAME("features", KERN_FEATURES,
++            NAME("inet", KERN_FEATURES_INET, )
++            NAME("inet6", KERN_FEATURES_INET6, )
++        )
++        NAME("boottrace", KERN_BOOTTRACE,
++            NAME("enabled", KERN_BOOTTRACE_ENABLED, )
++        )
+     )
+     NAME("hw", CTL_HW,
+         NAME("pagesizes", HW_PAGESIZES, )
+@@ -330,6 +407,11 @@ static inline int sysctlnametomib(const char *name, int *mibp, size_t *sizep)
+     )
+     NAME("vm", CTL_VM,
+         NAME("overcommit", VM_OVERCOMMIT, )
++    )
++    NAME("security", BSD_CTL_SECURITY,
++        NAME("jail", BSD_SECURITY_JAIL,
++            NAME("jailed", BSD_JAIL_JAILED, )
++        )
+     )
+ 	qemu_log("sysctlnametomib(%s): not implemented yet\n", orig_name);
+ 	return -TARGET_ENOENT;
+@@ -347,16 +429,14 @@ static inline int sysctl(const int *name, u_int namelen, void *oldp, size_t *old
+             return handlers[i].func(oldp, *oldlenp, oldlenp, newp, newlen);
+         }
+     }
+-#if DEBUG
+-    printf("Unimplemented sysctl ");
+-    for (int i = 0; i < namelen; i++) {
+-        if (i != 0) {
+-            printf(",");
++    if (do_strace) {
++        fprintf(stderr, "Unimplemented sysctl ");
++        for (int i = 0; i < namelen; i++) {
++            if (i != 0) fprintf(stderr, ",");
++            fprintf(stderr, "%#010x", name[i]);
+         }
+-        printf("%#010x", name[i]);
++        fprintf(stderr, "\n");
+     }
+-    printf("\n");
+-#endif
+     return -TARGET_ENOENT;
+ }
+ 
+@@ -368,9 +448,9 @@ static inline int sysctlbyname(const char *name, void *oldp, size_t *oldlenp,
+             return handlers[i].func(oldp, *oldlenp, oldlenp, newp, newlen);
+         }
+     }
+-#if DEBUG
+-    printf("Unimplemented sysctlbyname %s\n", name);
+-#endif
++    if (do_strace) {
++        fprintf(stderr, "Unimplemented sysctlbyname %s\n", name);
++    }
+     return -TARGET_ENOENT;
+ }
+ 
+@@ -1091,6 +1171,168 @@ host_to_target_copy_sockaddrs(int addrs, char *hbuf, char *tbuf)
+ }
+ #endif
+ 
++#ifdef __linux__
++/* ------------------------------------------------------------------ *
++ * Linux helpers for do_sysctl_net_routetable_iflistl                  *
++ * FreeBSD ABI constants that are unavailable / different on Linux.    *
++ * ------------------------------------------------------------------ */
++#define BSD_RTM_VERSION  5
++#define BSD_RTM_IFINFO   0x0e
++#define BSD_RTM_NEWADDR  0x0c
++#define BSD_RTA_IFP      0x10
++#define BSD_RTA_IFA      0x20
++#define BSD_RTA_NETMASK  0x04
++#define BSD_RTA_BRD      0x80
++#define BSD_AF_LINK      18
++#define BSD_AF_INET      2
++#define BSD_AF_INET6     28
++#define BSD_IFT_ETHER    0x06
++#define BSD_IFT_LOOP     0x18
++#define LINUX_IFF_MULTICAST  0x1000
++#define BSD_IFF_MULTICAST    0x8000
++/* Round up to 8-byte (long) boundary – FreeBSD sockaddr alignment rule */
++#define BSD_SA_ROUNDUP(n) (((n) + 7) & ~7)
++
++/* struct if_data – FreeBSD amd64, 152 bytes */
++struct bsd_if_data {
++    uint8_t  ifi_type;
++    uint8_t  ifi_physical;
++    uint8_t  ifi_addrlen;
++    uint8_t  ifi_hdrlen;
++    uint8_t  ifi_link_state;
++    uint8_t  ifi_vhid;
++    uint16_t ifi_datalen;
++    uint32_t ifi_mtu;
++    uint32_t ifi_metric;
++    uint32_t ifi_pad0;
++    uint64_t ifi_baudrate;
++    uint64_t ifi_ipackets;
++    uint64_t ifi_ierrors;
++    uint64_t ifi_opackets;
++    uint64_t ifi_oerrors;
++    uint64_t ifi_collisions;
++    uint64_t ifi_ibytes;
++    uint64_t ifi_obytes;
++    uint64_t ifi_imcasts;
++    uint64_t ifi_omcasts;
++    uint64_t ifi_iqdrops;
++    uint64_t ifi_oqdrops;
++    uint64_t ifi_noproto;
++    uint64_t ifi_hwassist;
++    int64_t  ifi_epoch;
++    int64_t  ifi_lastchange_sec;
++    int64_t  ifi_lastchange_usec;
++} __attribute__((packed));
++
++/* struct if_msghdrl – FreeBSD, 176 bytes */
++struct bsd_if_msghdrl {
++    uint16_t ifm_msglen;
++    uint8_t  ifm_version;
++    uint8_t  ifm_type;
++    int32_t  ifm_addrs;
++    int32_t  ifm_flags;
++    uint16_t ifm_index;
++    uint16_t _ifm_spare1;
++    uint16_t ifm_len;
++    uint16_t ifm_data_off;
++    uint32_t ifm_pad;
++    struct bsd_if_data ifm_data;
++} __attribute__((packed));
++
++/* struct ifa_msghdrl – FreeBSD */
++struct bsd_ifa_msghdrl {
++    uint16_t ifam_msglen;
++    uint8_t  ifam_version;
++    uint8_t  ifam_type;
++    int32_t  ifam_addrs;
++    int32_t  ifam_flags;
++    uint16_t ifam_index;
++    uint16_t _ifam_spare1;
++    uint16_t ifam_len;
++    uint16_t ifam_data_off;
++    int32_t  ifam_metric;
++    struct bsd_if_data ifam_data;
++} __attribute__((packed));
++
++/* struct sockaddr_dl – FreeBSD, variable length */
++struct bsd_sockaddr_dl {
++    uint8_t  sdl_len;
++    uint8_t  sdl_family;
++    uint16_t sdl_index;
++    uint8_t  sdl_type;
++    uint8_t  sdl_nlen;
++    uint8_t  sdl_alen;
++    uint8_t  sdl_slen;
++    /* followed by sdl_nlen name bytes then sdl_alen addr bytes */
++} __attribute__((packed));
++
++/* struct sockaddr_in – FreeBSD, 16 bytes */
++struct bsd_sockaddr_in {
++    uint8_t  sin_len;
++    uint8_t  sin_family;
++    uint16_t sin_port;
++    uint32_t sin_addr;
++    uint8_t  sin_zero[8];
++} __attribute__((packed));
++
++/* struct sockaddr_in6 – FreeBSD, 28 bytes */
++struct bsd_sockaddr_in6 {
++    uint8_t  sin6_len;
++    uint8_t  sin6_family;
++    uint16_t sin6_port;
++    uint32_t sin6_flowinfo;
++    uint8_t  sin6_addr[16];
++    uint32_t sin6_scope_id;
++} __attribute__((packed));
++
++/* Per-interface statistics read from /proc/net/dev */
++struct bsd_iface_stats {
++    uint64_t rx_bytes, rx_pkts, rx_errs, rx_drop;
++    uint64_t tx_bytes, tx_pkts, tx_errs;
++};
++
++static inline int linux_to_bsd_iff(unsigned int linux_flags)
++{
++    int bsd = 0;
++    bsd |= linux_flags & (IFF_UP | IFF_BROADCAST | IFF_LOOPBACK |
++                           IFF_POINTOPOINT | IFF_RUNNING |
++                           IFF_PROMISC | IFF_ALLMULTI);
++    if (linux_flags & LINUX_IFF_MULTICAST) {
++        bsd |= BSD_IFF_MULTICAST;
++    }
++    return bsd;
++}
++
++static bool read_proc_net_dev(const char *ifname, struct bsd_iface_stats *st)
++{
++    FILE *f = fopen("/proc/net/dev", "r");
++    if (!f) return false;
++    char line[512];
++    bool found = false;
++    while (fgets(line, sizeof(line), f)) {
++        char name[IFNAMSIZ + 2];
++        unsigned long long rb, rp, re, rd, tb, tp, te, td;
++        if (sscanf(line, " %[^:]: %llu %llu %llu %llu %*u %*u %*u %*u "
++                          "%llu %llu %llu %llu",
++                   name, &rb, &rp, &re, &rd, &tb, &tp, &te, &td) < 9) {
++            continue;
++        }
++        size_t nl = strlen(name);
++        if (nl > 0 && name[nl - 1] == ':') name[nl - 1] = '\0';
++        if (strcmp(name, ifname) == 0) {
++            st->rx_bytes = rb; st->rx_pkts = rp;
++            st->rx_errs  = re; st->rx_drop  = rd;
++            st->tx_bytes = tb; st->tx_pkts = tp;
++            st->tx_errs  = te;
++            found = true;
++            break;
++        }
++    }
++    fclose(f);
++    return found;
++}
++#endif /* __linux__ */
++
+ static abi_long
+ do_sysctl_net_routetable_iflistl(int32_t *snamep, size_t namelen, size_t olen,
+                                  char *tbuf, size_t *tlen)
+@@ -1292,7 +1534,221 @@ do_sysctl_net_routetable_iflistl(int32_t *snamep, size_t namelen, size_t olen,
+ 
+     return ret;
+ #else
+-    abort();
++    /*
++     * Linux path: use getifaddrs(3) to enumerate interfaces and build a
++     * synthetic blob of FreeBSD if_msghdrl / ifa_msghdrl records.
++     * Two passes: pass 0 measures required size, pass 1 fills the buffer.
++     */
++    struct ifaddrs *ifap = NULL, *ifa;
++    if (getifaddrs(&ifap) != 0) {
++        return get_errno(-1);
++    }
++
++    size_t needed = 0;
++
++    for (int pass = 0; pass < 2; pass++) {
++        char *tp = tbuf;
++        needed = 0;
++
++        for (ifa = ifap; ifa != NULL; ifa = ifa->ifa_next) {
++            /* One RTM_IFINFO record per unique interface name */
++            bool already = false;
++            struct ifaddrs *prev;
++            for (prev = ifap; prev != ifa; prev = prev->ifa_next) {
++                if (strcmp(prev->ifa_name, ifa->ifa_name) == 0) {
++                    already = true;
++                    break;
++                }
++            }
++            if (already) continue;
++
++            const char *ifname = ifa->ifa_name;
++            unsigned int ifidx = if_nametoindex(ifname);
++
++            int sock = socket(AF_INET, SOCK_DGRAM, 0);
++            struct ifreq ifr;
++            memset(&ifr, 0, sizeof(ifr));
++            strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
++
++            uint8_t hwaddr[6] = {0};
++            uint8_t bsd_ift   = BSD_IFT_ETHER;
++            uint32_t mtu      = 1500;
++
++            if (sock >= 0) {
++                if (ioctl(sock, SIOCGIFHWADDR, &ifr) == 0) {
++                    memcpy(hwaddr, ifr.ifr_hwaddr.sa_data, 6);
++                    bsd_ift = (ifr.ifr_hwaddr.sa_family == ARPHRD_LOOPBACK)
++                              ? BSD_IFT_LOOP : BSD_IFT_ETHER;
++                }
++                memset(&ifr, 0, sizeof(ifr));
++                strncpy(ifr.ifr_name, ifname, IFNAMSIZ - 1);
++                if (ioctl(sock, SIOCGIFMTU, &ifr) == 0) {
++                    mtu = ifr.ifr_mtu;
++                }
++                close(sock);
++            }
++
++            struct bsd_iface_stats st;
++            memset(&st, 0, sizeof(st));
++            read_proc_net_dev(ifname, &st);
++
++            int bsd_flags = linux_to_bsd_iff(ifa->ifa_flags);
++
++            uint8_t nlen     = (uint8_t)strlen(ifname);
++            uint8_t alen     = (bsd_ift == BSD_IFT_LOOP) ? 0 : 6;
++            size_t sdl_raw   = sizeof(struct bsd_sockaddr_dl) + nlen + alen;
++            size_t sdl_size  = BSD_SA_ROUNDUP(sdl_raw);
++            size_t ifm_total = sizeof(struct bsd_if_msghdrl) + sdl_size;
++            needed += ifm_total;
++
++            if (pass == 1 && tbuf != NULL) {
++                memset(tp, 0, ifm_total);
++                struct bsd_if_msghdrl *ifm = (struct bsd_if_msghdrl *)tp;
++                ifm->ifm_msglen   = tswap16((uint16_t)ifm_total);
++                ifm->ifm_version  = BSD_RTM_VERSION;
++                ifm->ifm_type     = BSD_RTM_IFINFO;
++                ifm->ifm_addrs    = tswap32(BSD_RTA_IFP);
++                ifm->ifm_flags    = tswap32(bsd_flags);
++                ifm->ifm_index    = tswap16((uint16_t)ifidx);
++                ifm->ifm_len      = tswap16((uint16_t)sizeof(struct bsd_if_msghdrl));
++                ifm->ifm_data_off = tswap16(
++                    (uint16_t)offsetof(struct bsd_if_msghdrl, ifm_data));
++
++                struct bsd_if_data *ifd = &ifm->ifm_data;
++                ifd->ifi_type      = bsd_ift;
++                ifd->ifi_addrlen   = alen;
++                ifd->ifi_datalen   = tswap16(sizeof(struct bsd_if_data));
++                ifd->ifi_mtu       = tswap32(mtu);
++                ifd->ifi_baudrate  = tswap64(
++                    bsd_ift == BSD_IFT_LOOP ? 0 : 1000000000ULL);
++                ifd->ifi_ipackets  = tswap64(st.rx_pkts);
++                ifd->ifi_ierrors   = tswap64(st.rx_errs);
++                ifd->ifi_opackets  = tswap64(st.tx_pkts);
++                ifd->ifi_oerrors   = tswap64(st.tx_errs);
++                ifd->ifi_ibytes    = tswap64(st.rx_bytes);
++                ifd->ifi_obytes    = tswap64(st.tx_bytes);
++                ifd->ifi_iqdrops   = tswap64(st.rx_drop);
++
++                uint8_t *sdlp = (uint8_t *)(tp + sizeof(struct bsd_if_msghdrl));
++                struct bsd_sockaddr_dl *sdl = (struct bsd_sockaddr_dl *)sdlp;
++                sdl->sdl_len    = (uint8_t)sdl_raw;
++                sdl->sdl_family = BSD_AF_LINK;
++                sdl->sdl_index  = tswap16((uint16_t)ifidx);
++                sdl->sdl_type   = bsd_ift;
++                sdl->sdl_nlen   = nlen;
++                sdl->sdl_alen   = alen;
++                memcpy(sdlp + sizeof(struct bsd_sockaddr_dl), ifname, nlen);
++                if (alen > 0) {
++                    memcpy(sdlp + sizeof(struct bsd_sockaddr_dl) + nlen,
++                           hwaddr, alen);
++                }
++                tp += ifm_total;
++            }
++
++            /* RTM_NEWADDR records for each inet/inet6 address */
++            struct ifaddrs *ifa2;
++            for (ifa2 = ifap; ifa2 != NULL; ifa2 = ifa2->ifa_next) {
++                if (strcmp(ifa2->ifa_name, ifname) != 0) continue;
++                if (ifa2->ifa_addr == NULL) continue;
++                int af = ifa2->ifa_addr->sa_family;
++                if (af != AF_INET && af != AF_INET6) continue;
++
++                size_t sa_sz = (af == AF_INET)
++                    ? BSD_SA_ROUNDUP(sizeof(struct bsd_sockaddr_in))
++                    : BSD_SA_ROUNDUP(sizeof(struct bsd_sockaddr_in6));
++
++                int addrs_mask = BSD_RTA_IFA;
++                if (ifa2->ifa_netmask)                        addrs_mask |= BSD_RTA_NETMASK;
++                if (ifa2->ifa_broadaddr || ifa2->ifa_dstaddr) addrs_mask |= BSD_RTA_BRD;
++
++                size_t sa_total = sa_sz;
++                if (addrs_mask & BSD_RTA_NETMASK) sa_total += sa_sz;
++                if (addrs_mask & BSD_RTA_BRD)     sa_total += sa_sz;
++
++                size_t ifam_total = sizeof(struct bsd_ifa_msghdrl) + sa_total;
++                needed += ifam_total;
++
++                if (pass == 1 && tbuf != NULL) {
++                    memset(tp, 0, ifam_total);
++                    struct bsd_ifa_msghdrl *ifam = (struct bsd_ifa_msghdrl *)tp;
++                    ifam->ifam_msglen   = tswap16((uint16_t)ifam_total);
++                    ifam->ifam_version  = BSD_RTM_VERSION;
++                    ifam->ifam_type     = BSD_RTM_NEWADDR;
++                    ifam->ifam_addrs    = tswap32(addrs_mask);
++                    ifam->ifam_flags    = tswap32(bsd_flags);
++                    ifam->ifam_index    = tswap16((uint16_t)ifidx);
++                    ifam->ifam_len      = tswap16(
++                        (uint16_t)sizeof(struct bsd_ifa_msghdrl));
++                    ifam->ifam_data_off = tswap16(
++                        (uint16_t)offsetof(struct bsd_ifa_msghdrl, ifam_data));
++                    ifam->ifam_data.ifi_datalen =
++                        tswap16(sizeof(struct bsd_if_data));
++                    ifam->ifam_data.ifi_mtu = tswap32(mtu);
++
++                    uint8_t *sp = (uint8_t *)(tp + sizeof(struct bsd_ifa_msghdrl));
++
++#define COPY_SA_IN(src_sa)  do {                                        \
++    struct bsd_sockaddr_in *_s = (struct bsd_sockaddr_in *)sp;          \
++    _s->sin_len    = sizeof(struct bsd_sockaddr_in);                    \
++    _s->sin_family = BSD_AF_INET;                                       \
++    _s->sin_addr   = ((struct sockaddr_in *)(src_sa))->sin_addr.s_addr; \
++    sp += sa_sz;                                                        \
++} while (0)
++
++#define COPY_SA_IN6(src_sa) do {                                            \
++    struct bsd_sockaddr_in6 *_s = (struct bsd_sockaddr_in6 *)sp;            \
++    _s->sin6_len    = sizeof(struct bsd_sockaddr_in6);                      \
++    _s->sin6_family = BSD_AF_INET6;                                         \
++    memcpy(_s->sin6_addr,                                                   \
++           &((struct sockaddr_in6 *)(src_sa))->sin6_addr, 16);              \
++    _s->sin6_scope_id = tswap32(                                            \
++        ((struct sockaddr_in6 *)(src_sa))->sin6_scope_id);                  \
++    sp += sa_sz;                                                            \
++} while (0)
++
++                    /* RTA_IFA */
++                    if (af == AF_INET) { COPY_SA_IN(ifa2->ifa_addr); }
++                    else               { COPY_SA_IN6(ifa2->ifa_addr); }
++
++                    /* RTA_NETMASK */
++                    if ((addrs_mask & BSD_RTA_NETMASK) && ifa2->ifa_netmask) {
++                        if (af == AF_INET) { COPY_SA_IN(ifa2->ifa_netmask); }
++                        else               { COPY_SA_IN6(ifa2->ifa_netmask); }
++                    }
++
++                    /* RTA_BRD */
++                    if (addrs_mask & BSD_RTA_BRD) {
++                        struct sockaddr *brd = ifa2->ifa_broadaddr
++                                              ? ifa2->ifa_broadaddr
++                                              : ifa2->ifa_dstaddr;
++                        if (brd) {
++                            if (af == AF_INET) { COPY_SA_IN(brd); }
++                            else               { COPY_SA_IN6(brd); }
++                        }
++                    }
++#undef COPY_SA_IN
++#undef COPY_SA_IN6
++                    tp += ifam_total;
++                }
++            } /* ifa2 loop */
++        } /* ifa outer loop */
++
++        if (pass == 0) {
++            if (olen == 0 || tbuf == NULL) {
++                freeifaddrs(ifap);
++                *tlen = needed * 4 / 3;
++                return 0;
++            }
++            if (*tlen < needed) {
++                freeifaddrs(ifap);
++                return -TARGET_ENOMEM;
++            }
++        }
++    } /* pass loop */
++
++    freeifaddrs(ifap);
++    *tlen = needed;
++    return 0;
+ #endif
+ }
+ 
+@@ -1392,6 +1848,26 @@ static int oidfmt(const int *oid, int len, char *fmt, int fmtlen, uint32_t *kind
+     }
+     return 0;
+ #else
++    /* net.routetable (NET_RT_IFLISTL): [4, BSD_PF_ROUTE=17, 0, 0, 5, 0] */
++    if (len == 6 && oid[0] == CTL_NET && oid[1] == BSD_PF_ROUTE &&
++        oid[2] == 0 && oid[3] == 0 && oid[4] == NET_RT_IFLISTL && oid[5] == 0) {
++        if (kind) *kind = CTLTYPE_OPAQUE | CTLFLAG_RD;
++        if (fmt) strncpy(fmt, "net.routetable", fmtlen);
++        return 0;
++    }
++    /* net.inet6.ip6.accept_rtadv: [4, 28, 41, 38] */
++    if (len == 4 && oid[0] == CTL_NET && oid[1] == BSD_PF_INET6 &&
++        oid[2] == IPPROTO_IPV6 && oid[3] == BSD_IPV6CTL_ACCEPT_RTADV) {
++        if (kind) *kind = CTLTYPE_INT | CTLFLAG_RW;
++        if (fmt) strncpy(fmt, "net.inet6.ip6.accept_rtadv", fmtlen);
++        return 0;
++    }
++    /* user.localbase [8, 21] — return "/usr/local" */
++        if (len == 2 && oid[0] == BSD_CTL_USER && oid[1] == BSD_USER_LOCALBASE) {
++        if (kind) *kind = CTLTYPE_STRING | CTLFLAG_RD;
++        if (fmt) strncpy(fmt, "user.localbase", fmtlen);
++        return 0;
++    }
+     for (int i = 0; handlers[i].name != 0; i++) {
+         if ((handlers[i].prefix ? len >= handlers[i].nmib : len == handlers[i].nmib) && memcmp(oid, handlers[i].mib, handlers[i].nmib * sizeof(int)) == 0) {
+             if (kind) {
+@@ -1403,16 +1879,14 @@ static int oidfmt(const int *oid, int len, char *fmt, int fmtlen, uint32_t *kind
+             return 0;
+         }
+     }
+-#if DEBUG
+-    printf("Unimplemented sysctl (oidfmt) ");
+-    for (int i = 0; i < len; i++) {
+-        if (i != 0) {
+-            printf(",");
++    if (do_strace) {
++        fprintf(stderr, "Unimplemented sysctl (oidfmt) ");
++        for (int i = 0; i < len; i++) {
++            if (i != 0) fprintf(stderr, ",");
++            fprintf(stderr, "%#010x", oid[i]);
+         }
+-        printf("%#010x", oid[i]);
++        fprintf(stderr, "\n");
+     }
+-    printf("\n");
+-#endif
+     return -TARGET_ENOENT;
+ #endif
+ }
+@@ -1674,6 +2148,21 @@ static abi_long do_freebsd_sysctl_oid(CPUArchState *env, int32_t *snamep,
+                                                 &holdlen);
+                 goto out;
+ 
++            case KERN_PROC_UMASK:
++                /* Return current process umask; pid argument is ignored. */
++                holdlen = sizeof(uint16_t);
++                ret = 0;
++                if (holdp) {
++                    if (oldlen < holdlen) {
++                        ret = -TARGET_ENOMEM;
++                    } else {
++                        mode_t mask = umask(0);
++                        umask(mask);
++                        *(uint16_t *)holdp = tswap16((uint16_t)mask);
++                    }
++                }
++                goto out;
++
+             default:
+                 break;
+             }
+@@ -1726,8 +2215,8 @@ static abi_long do_freebsd_sysctl_oid(CPUArchState *env, int32_t *snamep,
+             txp = (struct target_xvfsconf *)holdp;
+             for (i = 0; i < cnt; i++) {
+                 txp[i].vfc_vfsops = 0;
+-                strlcpy(txp[i].vfc_name, xvfsp[i].vfc_name,
+-                        sizeof(txp[i].vfc_name));
++                g_strlcpy(txp[i].vfc_name, xvfsp[i].vfc_name,
++                          sizeof(txp[i].vfc_name));
+                 txp[i].vfc_typenum = tswap32(xvfsp[i].vfc_typenum);
+                 txp[i].vfc_refcount = tswap32(xvfsp[i].vfc_refcount);
+                 txp[i].vfc_flags = tswap32(
+@@ -1747,7 +2236,7 @@ static abi_long do_freebsd_sysctl_oid(CPUArchState *env, int32_t *snamep,
+         case HW_MACHINE:
+             holdlen = sizeof(TARGET_HW_MACHINE);
+             if (holdp) {
+-                strlcpy(holdp, TARGET_HW_MACHINE, oldlen);
++                g_strlcpy(holdp, TARGET_HW_MACHINE, oldlen);
+             }
+             ret = 0;
+             goto out;
+@@ -1769,7 +2258,7 @@ static abi_long do_freebsd_sysctl_oid(CPUArchState *env, int32_t *snamep,
+             if (get_target_arch(ts, &machine_arch) == 0) {
+                 holdlen = strlen(machine_arch);
+                 if (holdp) {
+-                    strlcpy(holdp, machine_arch, oldlen);
++                    g_strlcpy(holdp, machine_arch, oldlen);
+                 }
+                 free(machine_arch);
+                 ret = 0;
+@@ -1778,7 +2267,7 @@ static abi_long do_freebsd_sysctl_oid(CPUArchState *env, int32_t *snamep,
+ #endif
+             holdlen = sizeof(TARGET_HW_MACHINE_ARCH);
+             if (holdp) {
+-                strlcpy(holdp, TARGET_HW_MACHINE_ARCH, oldlen);
++                g_strlcpy(holdp, TARGET_HW_MACHINE_ARCH, oldlen);
+             }
+             ret = 0;
+             goto out;
+@@ -1878,13 +2367,44 @@ static abi_long do_freebsd_sysctl_oid(CPUArchState *env, int32_t *snamep,
+         break;
+ 
+     case CTL_NET:
+-        if (snamep[1] == PF_ROUTE && snamep[2] == 0 && snamep[3] == 0 &&
++        if (snamep[1] == BSD_PF_ROUTE && snamep[2] == 0 && snamep[3] == 0 &&
+             snamep[4] == NET_RT_IFLISTL && snamep[5] == 0) {
+             ret = do_sysctl_net_routetable_iflistl(snamep, namelen, oldlen,
+                                                    holdp, &holdlen);
+             goto out;
+         }
++#ifdef __linux__
++        /* net.inet6.ip6.accept_rtadv — return 0 (disabled) */
++        if (snamep[1] == BSD_PF_INET6 && snamep[2] == IPPROTO_IPV6 &&
++            snamep[3] == BSD_IPV6CTL_ACCEPT_RTADV) {
++            if (holdp && holdlen >= sizeof(int)) {
++                *(int *)holdp = tswap32(0);
++            }
++            holdlen = sizeof(int);
++            ret = 0;
++            goto out;
++        }
++#endif
++        break;
++
++#ifdef __linux__
++    case BSD_CTL_USER:
++        /* user.localbase [8, 21] — return "/usr/local" */
++        if (snamep[1] == BSD_USER_LOCALBASE) {
++            static const char localbase[] = "/usr/local";
++            holdlen = sizeof(localbase);
++            if (holdp) {
++                if (oldlen < holdlen) {
++                    ret = -TARGET_ENOMEM;
++                    goto out;
++                }
++                memcpy(holdp, localbase, holdlen);
++            }
++            ret = 0;
++            goto out;
++        }
+         break;
++#endif
+ 
+     default:
+         break;
+@@ -1982,12 +2502,10 @@ static abi_long do_freebsd_sysctl_oid(CPUArchState *env, int32_t *snamep,
+ #endif
+         }
+     }
+-#ifdef DEBUG
+-    else {
+-        printf("sysctl(mib[0]=%d, mib[1]=%d, mib[2]=%d...) returned %d\n",
++    if (do_strace) {
++        fprintf(stderr, "sysctl(mib[0]=%d, mib[1]=%d, mib[2]=%d...) returned %d\n",
+                snamep[0], snamep[1], snamep[2], (int)ret);
+     }
+-#endif
+ 
+ out:
+     *holdlenp = holdlen;
+@@ -2034,6 +2552,10 @@ abi_long do_freebsd_sysctlbyname(CPUArchState *env, abi_ulong namep,
+     if (snamep == NULL) {
+         goto out;
+     }
++    if (getenv("QEMU_SYSCTL_TRACE")) {
++        fprintf(stderr, "[sysctlbyname name='%.*s' namelen=%d]\n",
++                namelen, snamep, namelen);
++    }
+     if (newp) {
+         hnewp = lock_user(VERIFY_READ, newp, newlen, 1);
+         if (hnewp == NULL) {
+@@ -2120,6 +2642,12 @@ abi_long do_freebsd_sysctl(CPUArchState *env, abi_ulong namep, int32_t namelen,
+         *q = tswap32(*p);
+     }
+ 
++    if (getenv("QEMU_SYSCTL_TRACE")) {
++        fprintf(stderr, "[sysctl oid:");
++        for (i = 0; i < namelen; i++) fprintf(stderr, " 0x%08x", snamep[i]);
++        fprintf(stderr, "] oldlen=%zu\n", (size_t)oldlen);
++    }
++
+     ret = do_freebsd_sysctl_oid(env, snamep, namelen, holdp, &holdlen, hnewp,
+         newlen);
+ 
+diff --git a/bsd-user/linux/os-syscall.c b/bsd-user/linux/os-syscall.c
+index 0a99bb32e0..f8de83d3cc 100644
+--- a/bsd-user/linux/os-syscall.c
++++ b/bsd-user/linux/os-syscall.c
+@@ -330,11 +330,15 @@ target_to_host_sock_type(int target_type)
+     case TARGET_SOCK_STREAM:
+         host_type = SOCK_STREAM;
+         break;
++    case TARGET_SOCK_RAW:
++        host_type = SOCK_RAW;
++        break;
+     case TARGET_SOCK_SEQPACKET:
+         host_type = SOCK_SEQPACKET;
+         break;
+     default:
+-        abort();
++        /* Unknown socket type - return EINVAL instead of aborting */
++        return -1;
+     }
+     if (target_type & TARGET_SOCK_CLOEXEC) {
+ #if defined(SOCK_CLOEXEC)
+diff --git a/bsd-user/syscall_defs.h b/bsd-user/syscall_defs.h
+index 71ff2fe6f4..020eac4479 100644
+--- a/bsd-user/syscall_defs.h
++++ b/bsd-user/syscall_defs.h
+@@ -338,6 +338,7 @@ struct target_freebsd__wrusage {
+ #define TARGET_SO_SETFIB        0x1014  /* use this FIB to route */
+ #define TARGET_SO_USER_COOKIE   0x1015  /* user cookie (dummynet etc.) */
+ #define TARGET_SO_PROTOCOL      0x1016  /* get socket protocol (Linux name) */
++#define TARGET_SO_TS_CLOCK      0x1017  /* clock type used for SO_TIMESTAMP/BINTIME */
+ 
+ /* alias for SO_PROTOCOL (SunOS name) */
+ #define TARGET_SO_PROTOTYPE     TARGET_SO_PROTOCOL
+-- 
+2.39.5
+

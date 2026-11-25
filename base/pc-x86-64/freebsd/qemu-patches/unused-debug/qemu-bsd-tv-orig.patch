@@ -1,0 +1,31 @@
+--- a/bsd-user/linux/os-time.h	2026-05-12 09:25:24.501498819 +0200
++++ b/bsd-user/linux/os-time.h	2026-05-12 09:25:24.481499103 +0200
+@@ -493,7 +493,7 @@
+ {
+     fd_set rfds, wfds, efds;
+     fd_set *rfds_ptr, *wfds_ptr, *efds_ptr;
+-    struct timeval tv, *tvp;
++    struct timeval tv, tv_orig, *tvp;
+     abi_long ret, error;
+ 
+     ret = copy_from_user_fdset_ptr(&rfds, &rfds_ptr, rfd_addr, n);
+@@ -514,6 +514,7 @@
+             return -TARGET_EFAULT;
+         }
+         tvp = &tv;
++        tv_orig = tv;  /* save original; FreeBSD select() does not modify timeout */
+     } else {
+         tvp = NULL;
+     }
+@@ -584,7 +585,10 @@
+             }
+         }
+         if (target_tv_addr != 0) {
+-            error = h2t_freebsd_timeval(&tv, target_tv_addr);
++            /* FreeBSD select() does NOT modify the timeout on return
++             * (unlike Linux which decrements it). Write back the original
++             * value to preserve FreeBSD semantics. */
++            error = h2t_freebsd_timeval(&tv_orig, target_tv_addr);
+             if (is_error(error)) {
+                 return error;
+             }

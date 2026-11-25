@@ -1,0 +1,45 @@
+#!ipxe
+echo start.ipxe: loading...
+
+# note: here is how we boot this freebsd image on a vnode:
+# 1- the node's fake-ipxe calls this script
+# 2- this script runs pxeboot.lkrn with is iPXE compiled in a
+#    linux kernel image format and with an embedded copy
+#    of freebsd's pxeboot
+# 3- pxeboot.lkrn chainloads freebsd's pxeboot
+# 4- freebsd's pxeboot loads the kernel
+
+# If we bypass step 2 (pxeboot.lkrn) and try to run
+# freebsd's pxeboot directly, it could work on physical nodes
+# but not on WALT virtual nodes, because the binary is used
+# as the value of qemu's '-kernel' option, and freebsd's pxeboot
+# is a PXE-NBP binary, not a format this option supports.
+
+iseq ${manufacturer} QEMU && goto vnode ||
+
+iseq ${platform} efi && goto efi ||
+
+iseq ${platform} pcbios && goto pcbios ||
+
+echo Unknown platform: ${platform}
+echo will reboot
+sleep 5
+reboot
+
+:vnode
+echo Loading pxeboot.lkrn...
+kernel pxeboot.lkrn
+sleep 3
+boot
+
+:efi
+echo Loading loader.efi...
+kernel loader.efi
+sleep 3
+boot
+
+:pcbios
+echo Loading pxeboot...
+kernel pxeboot
+sleep 3
+boot

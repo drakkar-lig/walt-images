@@ -1,0 +1,48 @@
+diff --git a/bsd-user/linux/os-misc.h b/bsd-user/linux/os-misc.h
+index 9d3d346d39..8ea305e77a 100644
+--- a/bsd-user/linux/os-misc.h
++++ b/bsd-user/linux/os-misc.h
+@@ -22,6 +22,7 @@
+ 
+ #include <sys/random.h>
+ #include <sched.h>
++#include "qemu/memfd.h"
+ 
+ int shm_open2(const char *path, int flags, mode_t mode, int shmflags,
+     const char *);
+@@ -448,7 +449,31 @@ static inline abi_long do_freebsd_shm_open2(abi_ulong pathptr, abi_ulong flags,
+                 target_to_host_bitmask(flags, fcntl_flags_tbl), mode,
+                 target_to_host_bitmask(shmflags, shmflag_flags_tbl), uname));
+ #else
+-    abort();
++    {
++        /*
++         * Linux has no native shm_open2(2)/SHM_ANON. FreeBSD's SHM_ANON
++         * creates an anonymous shared memory object that isn't tied to
++         * any /dev/shm-like namespace; Linux's memfd_create(2) provides
++         * the same semantics (an unlinked, resizable-via-ftruncate,
++         * mmap(MAP_SHARED)-able fd with no filesystem path). For named
++         * objects, fall back to the host's own shm_open(3), same as
++         * do_bsd_shm_open() does for the older freebsd12_shm_open(2).
++         * The FreeBSD-specific "shmflags" bits (SHM_ALLOW_SEALING,
++         * SHM_LARGEPAGE, SHM_GROW_ON_WRITE, ...) have no Linux
++         * equivalent and are ignored here.
++         */
++        int host_flags = target_to_host_bitmask(flags, fcntl_flags_tbl);
++
++        if (upath == SHM_ANON) {
++            int memfd_flags = (host_flags & O_CLOEXEC) ? MFD_CLOEXEC : 0;
++
++            ret = get_errno(memfd_create(
++                        uname != NULL ? (const char *)uname : "shm_anon",
++                        memfd_flags));
++        } else {
++            ret = get_errno(shm_open((const char *)upath, host_flags, mode));
++        }
++    }
+ #endif
+ 
+     if (upath != SHM_ANON) {
+-- 
+2.39.5
+

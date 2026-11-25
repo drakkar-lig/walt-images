@@ -1,0 +1,25 @@
+diff --git a/bsd-user/linux/os-stat.h b/bsd-user/linux/os-stat.h
+index 4db61984b7..62d4ec2b27 100644
+--- a/bsd-user/linux/os-stat.h
++++ b/bsd-user/linux/os-stat.h
+@@ -413,7 +413,6 @@ static inline abi_long do_freebsd11_fstatfs(abi_long fd, abi_ulong target_addr)
+ /* fstatfs(2) */
+ static inline abi_long do_freebsd_fstatfs(abi_long fd, abi_ulong target_addr)
+ {
+-#if !defined(__linux__)
+     abi_long ret;
+     struct statfs host_stfs;
+ 
+@@ -423,9 +422,6 @@ static inline abi_long do_freebsd_fstatfs(abi_long fd, abi_ulong target_addr)
+     }
+ 
+     return h2t_freebsd_statfs(target_addr, &host_stfs);
+-#else
+-    abort();
+-#endif
+ }
+ 
+ /* getfsstat(2) */
+-- 
+2.39.5
+

@@ -1,0 +1,36 @@
+diff --git a/bsd-user/bsd-file.h b/bsd-user/bsd-file.h
+index fb7a67a34f..5ebc27483c 100644
+--- a/bsd-user/bsd-file.h
++++ b/bsd-user/bsd-file.h
+@@ -1114,6 +1114,14 @@ static abi_long do_bsd_pipe(void *cpu_env, abi_ulong pipedes)
+     int host_ret = pipe(host_pipe);
+ 
+     if (host_ret != -1) {
++        /*
++         * Increase the pipe buffer to 1 MB.  The default (64 KB on Linux) is
++         * too small under QEMU's TCG overhead: the extra latency per syscall
++         * can cause rapid-write workloads (e.g. git-remote-curl dumping pack
++         * data) to fill the pipe and stall the writer before the reader has
++         * a chance to drain it.  Silently ignore failures (e.g. cap exceeded).
++         */
++        (void)fcntl(host_pipe[0], F_SETPIPE_SZ, 1 << 20);
+         set_second_rval(cpu_env, host_pipe[1]);
+         ret = host_pipe[0];
+     } else {
+diff --git a/bsd-user/linux/os-file.h b/bsd-user/linux/os-file.h
+index 225018028d..8b379a1c39 100644
+--- a/bsd-user/linux/os-file.h
++++ b/bsd-user/linux/os-file.h
+@@ -36,6 +36,9 @@ static inline abi_long do_bsd_pipe2(void *cpu_env, abi_ulong pipedes, int flags)
+ 		return get_errno(host_ret);
+     }
+ 
++    /* Increase pipe buffer to 1 MB (see do_bsd_pipe comment). */
++    (void)fcntl(host_pipe[0], F_SETPIPE_SZ, 1 << 20);
++
+     /*
+      * pipe2() returns it's second FD by copying it back to userspace and not in
+      * a second register like pipe(2): set_second_rval(cpu_env, host_pipe[1]);
+-- 
+2.39.5
+

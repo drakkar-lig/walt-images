@@ -1,0 +1,16 @@
+qemu-bsd-execve.patch
+qemu-bsd-strace.patch
+qemu-bsd-fstatfs.patch
+qemu-bsd-network.patch
+qemu-bsd-misc.patch
+qemu-bsd-thread.patch
+qemu-bsd-eventfd.patch
+qemu-bsd-mutex-yield.patch
+qemu-bsd-pipe-buffer.patch
+qemu-bsd-write-stats-debug.patch
+qemu-bsd-redzone.patch
+qemu-bsd-shm-open2.patch
+qemu-bsd-cpuset-affinity.patch
+qemu-bsd-condvar-umtx-fix.patch
+qemu-bsd-cpu-pin.patch
+qemu-bsd-rlimit.patch

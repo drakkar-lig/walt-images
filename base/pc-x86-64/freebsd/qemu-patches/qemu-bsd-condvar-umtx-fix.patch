@@ -1,0 +1,300 @@
+diff --git a/bsd-user/linux/os-thread.c b/bsd-user/linux/os-thread.c
+index a0479059bf..7c3fd2af1c 100644
+--- a/bsd-user/linux/os-thread.c
++++ b/bsd-user/linux/os-thread.c
+@@ -279,6 +279,19 @@ static struct umutex _cv_mutex;
+ #endif
+ 
+ #if !defined(_UMTX_OPTIMIZED) || defined(__linux__)
++/*
++ * FreeBSD's sys/umtx.h flag indicating a synchronization object (umutex,
++ * ucond, usem/usem2) is shared across processes rather than private to
++ * one process. Not defined by any Linux header, so mirror FreeBSD's
++ * value here (see sys/umtx.h in the FreeBSD source tree).
++ */
++#define USYNC_PROCESS_SHARED 0x0001
++
++/* struct _usem2/_usem's _count field layout, from FreeBSD's sys/umtx.h. */
++#define USEM_HAS_WAITERS 0x80000000U
++#define USEM_MAX_COUNT   0x7fffffffU
++#define USEM_COUNT(c)    ((c) & USEM_MAX_COUNT)
++
+ static int tcmpset_32(volatile uint32_t *addr, uint32_t a, uint32_t b)
+ {
+     uint32_t current = tswap32(a);
+@@ -562,7 +575,7 @@ abi_long freebsd_umtx_mutex_wake2(abi_ulong target_addr, uint32_t flags)
+ 
+ abi_long freebsd_umtx_sem2_wait(abi_ulong obj, size_t tsz, void *t)
+ {
+-#ifdef _UMTX_OPTIMIZED
++#if defined(_UMTX_OPTIMIZED) && !defined(__linux__)
+     if (!access_ok(VERIFY_WRITE, obj, sizeof(struct target__usem2))) {
+         return -TARGET_EFAULT;
+     }
+@@ -689,7 +702,7 @@ abi_long freebsd_umtx_sem2_wait(abi_ulong obj, size_t tsz, void *t)
+ 
+ abi_long freebsd_umtx_sem2_wake(abi_ulong obj)
+ {
+-#ifdef _UMTX_OPTIMIZED
++#if defined(_UMTX_OPTIMIZED) && !defined(__linux__)
+     if (!access_ok(VERIFY_READ, obj, sizeof(struct target__usem2))) {
+         return -TARGET_EFAULT;
+     }
+@@ -710,12 +723,13 @@ abi_long freebsd_umtx_sem2_wake(abi_ulong obj)
+     if ((flags & USYNC_PROCESS_SHARED) == 0) {
+ 		DEBUG_UMTX("<WAKE SEM2> %s: _umtx_op(%p, %d, %d, NULL, NULL)\n",
+ 			__func__,  addr, UMTX_OP_WAKE_PRIVATE, INT_MAX);
+-		ret = get_errno(safe__umtx_op(addr, UMTX_OP_WAKE_PRIVATE, INT_MAX, NULL,
+-            NULL));
++		ret = get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAKE_PRIVATE),
++            INT_MAX, NULL, NULL, 0));
+     } else {
+ 		DEBUG_UMTX("<WAKE SEM2> %s: _umtx_op(%p, %d, %d, NULL, NULL)\n",
+ 			__func__,  addr, UMTX_OP_WAKE, INT_MAX);
+-		ret = get_errno(safe__umtx_op(addr, UMTX_OP_WAKE, INT_MAX, NULL, NULL));
++		ret = get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAKE), INT_MAX,
++            NULL, NULL, 0));
+     }
+ 
+     return ret;
+@@ -724,7 +738,7 @@ abi_long freebsd_umtx_sem2_wake(abi_ulong obj)
+ 
+ abi_long freebsd_umtx_sem_wait(abi_ulong obj, size_t tsz, void *t)
+ {
+-#ifdef _UMTX_OPTIMIZED
++#if defined(_UMTX_OPTIMIZED) && !defined(__linux__)
+     if (!access_ok(VERIFY_WRITE, obj, sizeof(struct target__usem))) {
+         return -TARGET_EFAULT;
+     }
+@@ -772,7 +786,7 @@ abi_long freebsd_umtx_sem_wait(abi_ulong obj, size_t tsz, void *t)
+ 
+ abi_long freebsd_umtx_sem_wake(abi_ulong obj)
+ {
+-#ifdef _UMTX_OPTIMIZED
++#if defined(_UMTX_OPTIMIZED) && !defined(__linux__)
+     if (!access_ok(VERIFY_WRITE, obj, sizeof(struct target__usem))) {
+         return -TARGET_EFAULT;
+     }
+@@ -793,11 +807,13 @@ abi_long freebsd_umtx_sem_wake(abi_ulong obj)
+ 	if ((flags & USYNC_PROCESS_SHARED) == 0) {
+ 		DEBUG_UMTX("<WAKE SEM> %s: _umtx_op(%p, %d, %d, NULL, NULL)\n",
+ 			__func__,  &t__usem->_count, UMTX_OP_WAKE_PRIVATE, 1);
+-		ret = get_errno(safe__umtx_op(addr, UMTX_OP_WAKE_PRIVATE, 1, NULL, NULL));
++		ret = get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAKE_PRIVATE), 1,
++            NULL, NULL, 0));
+ 	} else {
+ 		DEBUG_UMTX("<WAKE SEM> %s: _umtx_op(%p, %d, %d, NULL, NULL)\n",
+ 			__func__,  &t__usem->_count, UMTX_OP_WAKE, 1);
+-		ret = get_errno(safe__umtx_op(addr, UMTX_OP_WAKE, 1, NULL, NULL));
++		ret = get_errno(safe_futex(addr, QEMU_UMTX_OP(UMTX_OP_WAKE), 1, NULL,
++            NULL, 0));
+ 	}
+ 
+ 	return ret;
+@@ -1219,7 +1235,7 @@ abi_long freebsd_unlock_umutex(abi_ulong target_addr, uint32_t id)
+ abi_long freebsd_cv_wait(abi_ulong target_ucond_addr,
+         abi_ulong target_umtx_addr, struct timespec *ts, int wflags)
+ {
+-#ifdef _UMTX_OPTIMIZED
++#if defined(_UMTX_OPTIMIZED) && !defined(__linux__)
+     if (!access_ok(VERIFY_WRITE, target_ucond_addr,
+         sizeof(struct target_ucond))) {
+         return -TARGET_EFAULT;
+@@ -1231,6 +1247,7 @@ abi_long freebsd_cv_wait(abi_ulong target_ucond_addr,
+     abi_long ret;
+     long tid;
+     struct target_ucond *target_ucond;
++    uint32_t *has_waiters_addr;
+ 
+     if (!lock_user_struct(VERIFY_WRITE, target_ucond, target_ucond_addr, 0)) {
+         return -TARGET_EFAULT;
+@@ -1248,38 +1265,55 @@ abi_long freebsd_cv_wait(abi_ulong target_ucond_addr,
+         }
+     }
+ 
+-    thr_self(&tid);
+-
+-    /* Lock the _cv_mutex so we can safely unlock the user mutex */
+-    safe__umtx_op(&_cv_mutex, UMTX_OP_MUTEX_LOCK, 0, NULL, NULL);
++    tid = gettid();
+ 
+-    /* Set c_has_waiters before releasing the user mutex! */
++    /*
++     * Set c_has_waiters *before* releasing the user mutex! Since the
++     * caller of freebsd_cv_signal()/_broadcast() must hold that same
++     * user mutex per normal condvar usage, this guarantees a concurrent
++     * signal/broadcast can't run until after we've published
++     * c_has_waiters == 1, so it will always see a waiter and issue a
++     * real futex wake rather than skip it.
++     */
+     __put_user(1, &target_ucond->c_has_waiters);
++    has_waiters_addr = (uint32_t *)&target_ucond->c_has_waiters;
+ 
+     /* unlock the user mutex */
+     ret = freebsd_unlock_umutex(target_umtx_addr, tid);
+     if (is_error(ret)) {
+-        safe__umtx_op(&_cv_mutex, UMTX_OP_MUTEX_UNLOCK, 0, NULL, NULL);
+         unlock_user_struct(target_ucond, target_ucond_addr, 1);
+         return ret;
+     }
+ 
+-    /* UMTX_OP_CV_WAIT unlocks _cv_mutex */
+-    DEBUG_UMTX("<CV_WAIT> %s: _umtx_op(%p, %d, 0x%x, %p, NULL)\n",
+-            __func__, g2h_untagged(target_ucond_addr), UMTX_OP_CV_WAIT, wflags,
+-            &_cv_mutex);
+-    ret = safe__umtx_op(g2h_untagged(target_ucond_addr), UMTX_OP_CV_WAIT, wflags,
+-	    &_cv_mutex, ts);
++    /*
++     * futex(2) atomically re-checks *has_waiters_addr == 1 as it enters
++     * the kernel wait queue; if a racing freebsd_cv_signal()/_broadcast()
++     * already reset it to 0 by the time we get here, this returns EAGAIN
++     * immediately instead of blocking, so no wakeup can be lost.
++     */
++    ret = get_errno(safe_futex(has_waiters_addr, FUTEX_WAIT, 1, ts, NULL, 0));
++    if (ret == -TARGET_EAGAIN || ret == -TARGET_EINTR) {
++        /* Spurious/raced wakeup: treat like a normal wakeup. */
++        ret = 0;
++    }
+ 
+-    if (is_error(ret)) {
+-        safe__umtx_op(&_cv_mutex, UMTX_OP_MUTEX_UNLOCK, 0, NULL, NULL);
+-        unlock_user_struct(target_ucond, target_ucond_addr, 1);
++    unlock_user_struct(target_ucond, target_ucond_addr, 1);
++
++    /*
++     * Per POSIX semantics the mutex must be reacquired before returning,
++     * whether we were woken, timed out, or hit a spurious wakeup above.
++     */
++    if (is_error(ret) && ret != -TARGET_ETIMEDOUT) {
+         return ret;
+     }
+-    ret = freebsd_lock_umutex(target_umtx_addr, tid, NULL, 0, TARGET_UMUTEX_TRY,
+-        0);
+-    safe__umtx_op(&_cv_mutex, UMTX_OP_MUTEX_UNLOCK, 0, NULL, NULL);
+-    unlock_user_struct(target_ucond, target_ucond_addr, 1);
++
++    {
++        abi_long lock_ret = freebsd_lock_umutex(target_umtx_addr, tid, NULL,
++                                                 0, 0, 0);
++        if (is_error(lock_ret)) {
++            return lock_ret;
++        }
++    }
+ 
+     return ret;
+ #endif  /* _UMTX_OPTIMIZED */
+@@ -1287,7 +1321,7 @@ abi_long freebsd_cv_wait(abi_ulong target_ucond_addr,
+ 
+ abi_long freebsd_cv_signal(abi_ulong target_ucond_addr)
+ {
+-#ifdef _UMTX_OPTIMIZED
++#if defined(_UMTX_OPTIMIZED) && !defined(__linux__)
+     if (!access_ok(VERIFY_WRITE, target_ucond_addr,
+         sizeof(struct target_ucond))) {
+         return -TARGET_EFAULT;
+@@ -1296,28 +1330,32 @@ abi_long freebsd_cv_signal(abi_ulong target_ucond_addr)
+     return optimized_umtx_op(target_ucond_addr, UMTX_OP_CV_SIGNAL, 0, NULL,
+         NULL);
+ #else
+-    abi_long ret;
++    struct target_ucond *target_ucond;
++    uint32_t *has_waiters_addr;
+ 
+-    if (!access_ok(VERIFY_WRITE, target_ucond_addr,
+-                sizeof(struct target_ucond))) {
++    if (!lock_user_struct(VERIFY_WRITE, target_ucond, target_ucond_addr, 0)) {
+         return -TARGET_EFAULT;
+     }
+ 
+-    /* Lock the _cv_mutex to prevent a race in do_cv_wait(). */
+-    safe__umtx_op(&_cv_mutex, UMTX_OP_MUTEX_LOCK, 0, NULL, NULL);
+-    DEBUG_UMTX("<CV_SIGNAL> %s: _umtx_op(%p, %d, 0x%x, NULL, NULL)\n",
+-            __func__, g2h_untagged(target_ucond_addr), UMTX_OP_CV_SIGNAL, 0);
+-    ret = get_errno(safe__umtx_op(g2h_untagged(target_ucond_addr), UMTX_OP_CV_SIGNAL, 0,
+-        NULL, NULL));
+-    safe__umtx_op(&_cv_mutex, UMTX_OP_MUTEX_UNLOCK, 0, NULL, NULL);
++    /*
++     * Reset c_has_waiters *before* waking: any waiter still in the race
++     * window between setting c_has_waiters == 1 and actually entering the
++     * futex wait queue will observe this reset and get a (harmless,
++     * POSIX-legal) spurious wakeup rather than a lost one. See the
++     * comment in freebsd_cv_wait() above.
++     */
++    __put_user(0, &target_ucond->c_has_waiters);
++    has_waiters_addr = (uint32_t *)&target_ucond->c_has_waiters;
+ 
+-    return ret;
++    unlock_user_struct(target_ucond, target_ucond_addr, 1);
++
++    return get_errno(safe_futex(has_waiters_addr, FUTEX_WAKE, 1, NULL, NULL, 0));
+ #endif /* _UMTX_OPTIMIZED */
+ }
+ 
+ abi_long freebsd_cv_broadcast(abi_ulong target_ucond_addr)
+ {
+-#ifdef _UMTX_OPTIMIZED
++#if defined(_UMTX_OPTIMIZED) && !defined(__linux__)
+     if (!access_ok(VERIFY_WRITE, target_ucond_addr,
+         sizeof(struct target_ucond))) {
+         return -TARGET_EFAULT;
+@@ -1326,25 +1364,30 @@ abi_long freebsd_cv_broadcast(abi_ulong target_ucond_addr)
+     return optimized_umtx_op(target_ucond_addr, UMTX_OP_CV_BROADCAST, 0, NULL,
+         NULL);
+ #else
+-    int ret;
++    struct target_ucond *target_ucond;
++    uint32_t *has_waiters_addr;
+ 
+     if (!access_ok(VERIFY_WRITE, target_ucond_addr,
+                 sizeof(struct target_ucond))) {
+         return -TARGET_EFAULT;
+     }
+ 
+-    /* Lock the _cv_mutex to prevent a race in do_cv_wait(). */
+-    safe__umtx_op(&_cv_mutex, UMTX_OP_MUTEX_LOCK, 0, NULL, NULL);
+-    DEBUG_UMTX("<CV_BROADCAST> %s: _umtx_op(%p, %d, 0x%x, NULL, NULL)\n",
+-            __func__, g2h_untagged(target_ucond_addr), UMTX_OP_CV_BROADCAST, 0);
+-    ret = get_errno(safe__umtx_op(g2h_untagged(target_ucond_addr), UMTX_OP_CV_BROADCAST, 0,
+-                NULL, NULL));
+-    safe__umtx_op(&_cv_mutex, UMTX_OP_MUTEX_UNLOCK, 0, NULL, NULL);
++    if (!lock_user_struct(VERIFY_WRITE, target_ucond, target_ucond_addr, 0)) {
++        return -TARGET_EFAULT;
++    }
+ 
+-    return ret;
++    /* See freebsd_cv_signal() for why we reset c_has_waiters first. */
++    __put_user(0, &target_ucond->c_has_waiters);
++    has_waiters_addr = (uint32_t *)&target_ucond->c_has_waiters;
++
++    unlock_user_struct(target_ucond, target_ucond_addr, 1);
++
++    return get_errno(safe_futex(has_waiters_addr, FUTEX_WAKE, INT_MAX, NULL,
++                                 NULL, 0));
+ #endif /* _UMTX_OPTIMIZED */
+ }
+ 
++
+ abi_long freebsd_rw_rdlock(abi_ulong target_addr, long fflag, size_t tsz,
+         void *t)
+ {
+@@ -1683,7 +1726,16 @@ freebsd_umtx_robust_list(abi_ulong target_addr, size_t rbsize)
+     return -TARGET_EOPNOTSUPP;
+ #endif
+ #else
+-    abort();
++    /*
++     * Linux has no direct equivalent to FreeBSD's kernel-tracked robust
++     * mutex list registration (it uses set_robust_list(2), which has a
++     * different, non-compatible list format). Robust mutexes are an
++     * optional/advisory feature: report "not supported" instead of
++     * aborting the whole process, so callers that tolerate this
++     * gracefully (as libthr does) keep working.
++     */
++    gemu_log("UMTX_OP_ROBUST_LISTS not supported on Linux hosts\n");
++    return -TARGET_EOPNOTSUPP;
+ #endif
+ }
+ 
+-- 
+2.39.5
+

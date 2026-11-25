@@ -1,0 +1,113 @@
+diff -ru a/bsd-user/bsd-proc.c b/bsd-user/bsd-proc.c
+--- a/bsd-user/bsd-proc.c
++++ b/bsd-user/bsd-proc.c
+@@ -37,7 +37,44 @@
+  */
+ int target_to_host_resource(int code)
+ {
++#if defined(__linux__)
++    /*
++     * The numbering of resources differs between FreeBSD and Linux
++     * from RLIMIT_NPROC (7 on FreeBSD, 6 on Linux). Without this
++     * conversion, setrlimit(RLIMIT_NPROC, 0) of a FreeBSD program (pkg
++     * does this in its sandboxed fetch process) sets RLIMIT_NOFILE to 0
++     * on Linux, and the program can no longer open any file.
++     * Resources specific to FreeBSD return -1 (see the callers).
++     */
++    switch (code) {
++    case TARGET_RLIMIT_CPU:
++        return RLIMIT_CPU;
++    case TARGET_RLIMIT_FSIZE:
++        return RLIMIT_FSIZE;
++    case TARGET_RLIMIT_DATA:
++        return RLIMIT_DATA;
++    case TARGET_RLIMIT_STACK:
++        return RLIMIT_STACK;
++    case TARGET_RLIMIT_CORE:
++        return RLIMIT_CORE;
++    case TARGET_RLIMIT_RSS:
++        return RLIMIT_RSS;
++    case TARGET_RLIMIT_MEMLOCK:
++        return RLIMIT_MEMLOCK;
++    case TARGET_RLIMIT_NPROC:
++        return RLIMIT_NPROC;
++    case TARGET_RLIMIT_NOFILE:
++        return RLIMIT_NOFILE;
++    case TARGET_RLIMIT_AS:
++        return RLIMIT_AS;
++    default:
++        /* RLIMIT_SBSIZE, RLIMIT_NPTS, RLIMIT_SWAP, RLIMIT_KQUEUES,
++         * RLIMIT_UMTXP, or invalid */
++        return -1;
++    }
++#else
+     return code;
++#endif
+ }
+ 
+ rlim_t target_to_host_rlim(abi_llong target_rlim)
+diff -ru a/bsd-user/bsd-proc.h b/bsd-user/bsd-proc.h
+--- a/bsd-user/bsd-proc.h
++++ b/bsd-user/bsd-proc.h
+@@ -159,7 +159,23 @@
+     struct target_rlimit *target_rlim;
+     struct rlimit rlim;
+ 
++#if defined(__linux__)
++    if (resource == -1) {
++        /* resource specific to FreeBSD (see target_to_host_resource()) */
++        if (arg1 < 0 || arg1 > TARGET_RLIMIT_UMTXP) {
++            return -TARGET_EINVAL;
++        }
++        rlim.rlim_cur = RLIM_INFINITY;
++        rlim.rlim_max = RLIM_INFINITY;
++        resource = RLIMIT_NLIMITS;   /* go to the default case below */
++    }
++#endif
+     switch (resource) {
++#if defined(__linux__)
++    case RLIMIT_NLIMITS:
++        ret = 0;
++        break;
++#endif
+     case RLIMIT_STACK:
+         rlim.rlim_cur = target_dflssiz;
+         rlim.rlim_max = target_maxssiz;
+@@ -195,6 +211,25 @@
+     struct target_rlimit *target_rlim;
+     struct rlimit rlim;
+ 
++#if defined(__linux__)
++    if (resource == -1) {
++        /* resource specific to FreeBSD (see target_to_host_resource()) */
++        if (arg1 < 0 || arg1 > TARGET_RLIMIT_UMTXP) {
++            return -TARGET_EINVAL;
++        }
++        return 0;   /* ignored */
++    }
++    if (resource == RLIMIT_NPROC) {
++        /*
++         * On Linux, RLIMIT_NPROC limits the number of processes and
++         * threads of the real user ID, on the whole host, including the
++         * threads qemu creates for itself. A low value (e.g., 0, set by
++         * pkg to prevent its sandboxed process from forking) would make
++         * the emulation fail, so it is ignored.
++         */
++        return 0;
++    }
++#endif
+     if (RLIMIT_STACK == resource) {
+         /* XXX We should, maybe, allow the stack size to shrink */
+         ret = -TARGET_EPERM;
+diff -ru a/bsd-user/syscall_defs.h b/bsd-user/syscall_defs.h
+--- a/bsd-user/syscall_defs.h
++++ b/bsd-user/syscall_defs.h
+@@ -254,6 +254,8 @@
+ #define TARGET_RLIMIT_AS        10
+ #define TARGET_RLIMIT_NPTS      11
+ #define TARGET_RLIMIT_SWAP      12
++#define TARGET_RLIMIT_KQUEUES   13
++#define TARGET_RLIMIT_UMTXP     14
+ 
+ struct target_rlimit {
+     uint64_t rlim_cur;

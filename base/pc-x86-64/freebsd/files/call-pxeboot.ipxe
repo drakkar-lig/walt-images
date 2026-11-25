@@ -1,0 +1,61 @@
+#!ipxe
+echo pxeboot.lkrn: starting...
+# Note:
+# The pxeboot.lkrn binary we generate is iPXE compiled as a binary
+# following linux kernel's format.
+#
+# It embeds 2 images:
+# - this script "call-pxeboot.ipxe" (automatically run)
+# - a copy of freebsd's "pxeboot" PXE-NBP binary
+#
+# Even if freebsd's "pxeboot" image is embedded, the binary still
+# has to initialize the UNDI environment, for use by the "pxeboot"
+# PXE-NBP binary.
+# The ifopen command will initialize the UNDI environment.
+# This binary should provide an env variable called "mac"
+# indicating which interface was used for initiating network boot.
+
+isset ${mac} || goto bootmacnotset
+set bootmac ${mac}
+
+isset ${net0/mac} || goto zerointerfaces
+
+set idx:int32 0
+:loop
+isset ${net${idx}/mac} || goto notfound
+iseq ${net${idx}/mac} ${bootmac} || goto notthisinterface
+ifopen net${idx} || goto ifopenfailed
+chain pxeboot || goto pxebootfailed
+echo pxeboot.lkrn: Chainloaded pxeboot exited unexpectedly.
+goto failed
+
+:notthisinterface
+inc idx && goto loop
+
+:found
+:ifopenfailed
+echo pxeboot.lkrn: Failed to ifopen net${idx}.
+goto failed
+
+:pxebootfailed
+echo pxeboot.lkrn: Failed to chainload pxeboot.
+goto failed
+
+:bootmacnotset
+echo pxeboot.lkrn: Unknown boot mac.
+goto failed
+
+:notfound
+echo pxeboot.lkrn: No interface found with mac ${bootmac}.
+goto failed
+
+:zerointerfaces
+echo pxeboot.lkrn: No interface detected.
+goto failed
+
+:failed
+echo pxeboot.lkrn: Will reboot in 3s.
+sleep 3
+reboot
+
+

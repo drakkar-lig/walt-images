@@ -9,6 +9,7 @@ OS_VERSIONS = {
     'alpine': "3.24.4",
     'debian': "trixie",
     'openwrt': "25.12.6",
+    'freebsd': "14.3",
 }
 
 # versions of external software installed by some images, passed as
@@ -55,6 +56,7 @@ OS_TYPE_LABEL = {
     'debian': 'Debian OS',
     'alpine': 'Alpine OS',
     'openwrt': 'OpenWRT',
+    'freebsd': 'FreeBSD',
 }
 
 IMAGE_OVERALL_TEMPLATE = """
@@ -89,6 +91,14 @@ Note: this armv7 image supports Raspberry Pi models 2B, 3B and 3B+
 (see rpi64-alpine for models 3B+, 4B and 5B).""",
     'alpine.rpi64': """
 Note: this aarch64 image supports Raspberry Pi models 3B+, 4B and 5B.""",
+    'freebsd.pc-x86-64': """
+Note: this image is a prototype, and requires a WalT server >= 11.
+It was tested mostly on virtual nodes, with the default boot mode
+(`network-volatile`). On the WalT server, `walt image shell` and
+`walt image build` run its FreeBSD binaries through an emulation layer
+(a patched qemu bsd-user), so they are slower than with Linux images.
+See `base/pc-x86-64/freebsd/README.md` in the walt-images repository for
+details.""",
 }
 
 FEATURED_IMAGE_SHORT_DESC_TEMPLATES = {

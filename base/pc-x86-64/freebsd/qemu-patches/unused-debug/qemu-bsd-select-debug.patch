@@ -1,0 +1,35 @@
+diff --git a/bsd-user/linux/os-time.h b/bsd-user/linux/os-time.h
+index 893967dd6e..9ece22ee25 100644
+--- a/bsd-user/linux/os-time.h
++++ b/bsd-user/linux/os-time.h
+@@ -510,8 +510,30 @@ static inline abi_long do_freebsd_select(CPUArchState *env, int n,
+         tvp = NULL;
+     }
+ 
++    if (getenv("QEMU_DEBUG_SELECT")) {
++        int _fd;
++        fprintf(stderr, "DEBUG select-in(%d) tv={%ld,%ld}: ", n,
++                tvp ? tvp->tv_sec : -1, tvp ? tvp->tv_usec : -1);
++        if (rfds_ptr) for (_fd=0;_fd<n;_fd++) if (FD_ISSET(_fd,rfds_ptr)) fprintf(stderr,"r%d ",_fd);
++        if (wfds_ptr) for (_fd=0;_fd<n;_fd++) if (FD_ISSET(_fd,wfds_ptr)) fprintf(stderr,"w%d ",_fd);
++        if (efds_ptr) for (_fd=0;_fd<n;_fd++) if (FD_ISSET(_fd,efds_ptr)) fprintf(stderr,"e%d ",_fd);
++        fprintf(stderr,"\n");
++    }
++
+     ret = get_errno(safe_select(n, rfds_ptr, wfds_ptr, efds_ptr, tvp));
+ 
++    if (getenv("QEMU_DEBUG_SELECT")) {
++        int _fd;
++        fprintf(stderr, "DEBUG select-out(%d) ret=%ld tv={%ld,%ld}: ", n, (long)ret,
++                tvp ? tvp->tv_sec : -1, tvp ? tvp->tv_usec : -1);
++        if (!is_error(ret) && ret > 0) {
++            if (rfds_ptr) for (_fd=0;_fd<n;_fd++) if (FD_ISSET(_fd,rfds_ptr)) fprintf(stderr,"r%d ",_fd);
++            if (wfds_ptr) for (_fd=0;_fd<n;_fd++) if (FD_ISSET(_fd,wfds_ptr)) fprintf(stderr,"w%d ",_fd);
++            if (efds_ptr) for (_fd=0;_fd<n;_fd++) if (FD_ISSET(_fd,efds_ptr)) fprintf(stderr,"e%d ",_fd);
++        }
++        fprintf(stderr,"\n");
++    }
++
+     if (!is_error(ret)) {
+         if (rfd_addr != 0) {
+             error = copy_to_user_fdset(rfd_addr, &rfds, n);

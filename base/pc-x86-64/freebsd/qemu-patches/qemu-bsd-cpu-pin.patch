@@ -1,0 +1,80 @@
+diff --git a/bsd-user/main.c b/bsd-user/main.c
+index 008779cd9f..961935ad75 100644
+--- a/bsd-user/main.c
++++ b/bsd-user/main.c
+@@ -31,6 +31,9 @@
+ #if !defined(__linux__)
+ #include <machine/trap.h>
+ #endif
++#if defined(__linux__)
++#include <sched.h>
++#endif
+ 
+ #include "qapi/error.h"
+ #include "qemu.h"
+@@ -363,6 +366,62 @@ int main(int argc, char **argv)
+ 
+     adjust_ssize();
+ 
++#if defined(__linux__)
++    /*
++     * Workaround for a genuine multi-threaded TCG (MTTCG) race in this
++     * bsd-user fork: guest programs that spawn several truly-concurrent
++     * pthreads doing heavy compute (e.g. a C compiler's internal worker
++     * threads) can intermittently crash (SIGSEGV / "unhandled CPU
++     * exception 0x6", i.e. corrupted/garbage translated code) or
++     * deadlock, when those guest threads are scheduled onto different
++     * host CPU cores at the same time. This was bisected across every
++     * one of our patches (present identically from the very first patch
++     * onward) and confirmed to be inherent to the upstream base branch's
++     * TCG/JIT state (e.g. tb_ctx, the translation-block cache), which is
++     * process-global and only ever raced by *this* process's own guest
++     * threads -- not by other, separate qemu-user processes.
++     *
++     * Fix: confine every guest thread of this process to a single host
++     * core. This serializes them with respect to each other (eliminating
++     * the race, confirmed by testing: 0 failures in 30 runs, vs. ~15-30%
++     * unpinned) while still allowing multiple *separate* qemu-user
++     * processes to run in full parallel on different cores, since each
++     * has its own independent TCG state.
++     *
++     * We spread different qemu processes across cores using a mix of
++     * getpid() and the monotonic clock, rather than getpid() alone:
++     * under containerized environments (e.g. Docker) each container has
++     * its own PID namespace, so unrelated qemu-user processes launched
++     * in separate containers very often end up with the same or very
++     * similar low PID (each container's first process is PID 1),  which
++     * would collapse them all onto the very same host core instead of
++     * spreading out. Mixing in a nanosecond-resolution clock reading
++     * (which differs across process launches regardless of PID
++     * namespacing) gives a much better spread, so a typical multi-
++     * process workload (e.g. multiple compiler invocations, or a build
++     * system/container orchestrator fanning out jobs) still uses all
++     * host cores -- only the threads *within* one process are
++     * serialized.
++     */
++    {
++        long nproc = sysconf(_SC_NPROCESSORS_ONLN);
++        if (nproc > 0) {
++            cpu_set_t cpuset;
++            struct timespec ts;
++            unsigned long seed;
++            int cpu;
++
++            clock_gettime(CLOCK_MONOTONIC, &ts);
++            seed = (unsigned long)getpid() ^ (unsigned long)ts.tv_nsec;
++            cpu = (int)(seed % (unsigned long)nproc);
++
++            CPU_ZERO(&cpuset);
++            CPU_SET(cpu, &cpuset);
++            (void) sched_setaffinity(0, sizeof(cpuset), &cpuset);
++        }
++    }
++#endif
++
+     if (argc <= 1) {
+         usage();
+     }
+-- 
+2.39.5
+

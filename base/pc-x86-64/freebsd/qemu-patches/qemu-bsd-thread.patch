@@ -1,0 +1,157 @@
+diff --git a/bsd-user/linux/os-thread.c b/bsd-user/linux/os-thread.c
+index f81124b68a..9add8f5373 100644
+--- a/bsd-user/linux/os-thread.c
++++ b/bsd-user/linux/os-thread.c
+@@ -142,7 +142,6 @@ void *new_freebsd_thread_start(void *arg)
+     tid = gettid();
+     TaskState *ts = get_task_state(cpu);
+     ts->ts_tid = tid;
+-
+     /* copy out the child TID to both locations */
+     if (info->param.child_tid) {
+         put_user_ual(tid, info->param.child_tid);
+@@ -222,7 +221,13 @@ static void translate_timeout(void *t, size_t tsz, struct timespec *timeout, str
+         case TARGET_CLOCK_REALTIME:
+         case TARGET_CLOCK_REALTIME_FAST:
+         case TARGET_CLOCK_REALTIME_PRECISE:
+-        *op_flags |= FUTEX_CLOCK_REALTIME;
++        /*
++         * Do NOT add FUTEX_CLOCK_REALTIME here: Linux only supports that flag
++         * with FUTEX_WAIT_BITSET, not plain FUTEX_WAIT — using it with
++         * FUTEX_WAIT returns ENOSYS (Linux 38 → FreeBSD 78).
++         * We always convert absolute times to relative below, so the clock
++         * id for the Linux futex call is irrelevant.
++         */
+         host_clockid = CLOCK_REALTIME;
+         break;
+         default:
+@@ -371,7 +376,7 @@ static abi_long _umtx_wait_uint_private(uint32_t *addr, uint32_t target_val,
+     struct timespec timeout;
+     int op = QEMU_UMTX_OP(UMTX_OP_WAIT_UINT_PRIVATE);
+     translate_timeout(t, tsz, &timeout, &timeoutp, &op);
+-    return get_errno(safe_futex(addr, op, target_val, NULL, NULL, 0));
++    return get_errno(safe_futex(addr, op, target_val, timeoutp, NULL, 0));
+ }
+ 
+ abi_long freebsd_umtx_wait_uint_private(abi_ulong obj, uint32_t target_val,
+@@ -421,7 +426,7 @@ static abi_long _umtx_wait(uint32_t *addr, uint32_t target_val, size_t tsz,
+     struct timespec timeout;
+     int op = QEMU_UMTX_OP(UMTX_OP_WAIT);
+     translate_timeout(t, tsz, &timeout, &timeoutp, &op);
+-    return get_errno(safe_futex(addr, op, target_val, NULL, NULL, 0));
++    return get_errno(safe_futex(addr, op, target_val, timeoutp, NULL, 0));
+ }
+ 
+ abi_long freebsd_umtx_wait(abi_ulong targ_addr, abi_ulong target_id, size_t tsz,
+@@ -1110,7 +1115,7 @@ abi_long freebsd_lock_umutex(abi_ulong target_addr, uint32_t id,
+ 
+                 break;
+             } else {
+-                __get_user(owner, (uint32_t *)&target_umutex->m_count);
++                __get_user(owner, (uint32_t *)&target_umutex->m_owner);
+             }
+         }
+ 
+@@ -1400,7 +1405,10 @@ abi_long freebsd_rw_rdlock(abi_ulong target_addr, long fflag, size_t tsz,
+                     target_urwlock->rw_state);
+             ret = _umtx_wait_uint(&target_urwlock->rw_state, tswap32(state),
+                     tsz, t, __func__);
+-            if (is_error(ret)) {
++            if (ret == -TARGET_EAGAIN || ret == -TARGET_EDEADLK) {
++                /* Retryable races while waiting on rwlocks under Linux futex. */
++                sched_yield();
++            } else if (is_error(ret)) {
+                 return ret;
+             }
+             if (!lock_user_struct(VERIFY_WRITE, target_urwlock, target_addr,
+@@ -1501,7 +1509,10 @@ abi_long freebsd_rw_wrlock(abi_ulong target_addr, long fflag, size_t tsz,
+                     target_urwlock->rw_state);
+             ret = _umtx_wait_uint(&target_urwlock->rw_state,
+                         tswap32(state), tsz, t, __func__);
+-            if (is_error(ret)) {
++            if (ret == -TARGET_EAGAIN || ret == -TARGET_EDEADLK) {
++                /* Retryable races while waiting on rwlocks under Linux futex. */
++                sched_yield();
++            } else if (is_error(ret)) {
+                 return ret;
+             }
+             if (!lock_user_struct(VERIFY_WRITE, target_urwlock, target_addr,
+diff --git a/bsd-user/linux/os-thread.h b/bsd-user/linux/os-thread.h
+index e58bc796a2..e76ab135ae 100644
+--- a/bsd-user/linux/os-thread.h
++++ b/bsd-user/linux/os-thread.h
+@@ -28,24 +28,28 @@
+ int safe_thr_suspend(struct timespec *timeout);
+ int safe__umtx_op(void *, int, unsigned long, void *, void *);
+ 
+-//#if defined(HOST_BIG_ENDIAN) == defined(TARGET_BIG_ENDIAN) && \
+-//    (TARGET_ABI_BITS == HOST_LONG_BITS || defined(UMTX_OP__32BIT))
+ #define _UMTX_OPTIMIZED
+-//#if defined(TARGET_ABI32)
+-//#define QEMU_UMTX_OP(n) (UMTX_OP__32BIT | (n))
+-//#else
+-//#define QEMU_UMTX_OP(n) (n)
+-//#endif /* TARGET_ABI32 */
+-//#else
+-static int u2f_op[] = {
+-    [UMTX_OP_WAIT_UINT_PRIVATE] = FUTEX_WAIT_PRIVATE,
+-    [UMTX_OP_WAIT] = FUTEX_WAIT,
+-    [UMTX_OP_WAKE] = FUTEX_WAKE,
+-    [UMTX_OP_WAKE_PRIVATE] = FUTEX_WAKE_PRIVATE,
+-};
+-
+-#define QEMU_UMTX_OP(n) ({assert(n < (sizeof(u2f_op) / sizeof(u2f_op[0]))); u2f_op[n];})
+-//#endif
++
++static inline int qemu_umtx_op(int op)
++{
++    switch (op) {
++    case UMTX_OP_WAIT_UINT:
++        return FUTEX_WAIT;
++    case UMTX_OP_WAIT_UINT_PRIVATE:
++        return FUTEX_WAIT_PRIVATE;
++    case UMTX_OP_WAIT:
++        return FUTEX_WAIT;
++    case UMTX_OP_WAKE:
++        return FUTEX_WAKE;
++    case UMTX_OP_WAKE_PRIVATE:
++        return FUTEX_WAKE_PRIVATE;
++    default:
++        /* Pass through operations that do not require Linux futex remapping. */
++        return op;
++    }
++}
++
++#define QEMU_UMTX_OP(n) qemu_umtx_op((n))
+ 
+ static inline abi_long do_freebsd_thr_self(abi_ulong target_id)
+ {
+@@ -541,6 +545,12 @@ static inline abi_long do_freebsd__umtx_op(abi_ulong obj, int op, abi_ulong val,
+ 
+     case TARGET_UMTX_OP_RW_UNLOCK:
+         ret = freebsd_rw_unlock(obj);
++#if defined(__linux__)
++        /* Avoid starvation when userspace repeatedly unlocks/relocks rwlocks. */
++        if (!is_error(ret)) {
++            sched_yield();
++        }
++#endif
+         break;
+ 
+     case TARGET_UMTX_OP_MUTEX_WAKE2:
+diff --git a/bsd-user/syscall_defs.h b/bsd-user/syscall_defs.h
+index 020eac4479..2199161692 100644
+--- a/bsd-user/syscall_defs.h
++++ b/bsd-user/syscall_defs.h
+@@ -634,6 +634,8 @@ typedef struct target_freebsd_fhandle target_freebsd_fhandle_t;
+ /* FreeBSD-specific */
+ #define TARGET_F_ADD_SEALS          19
+ #define TARGET_F_GET_SEALS          20
++#define TARGET_F_ISUNIONSTACK       21
++#define TARGET_F_KINFO              22
+ 
+ struct target_freebsd_flock {
+     int64_t l_start;
+-- 
+2.39.5
+

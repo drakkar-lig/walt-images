@@ -1,0 +1,393 @@
+diff --git a/bsd-user/bsd-proc.h b/bsd-user/bsd-proc.h
+index 840df4fa50..97821e0e6e 100644
+--- a/bsd-user/bsd-proc.h
++++ b/bsd-user/bsd-proc.h
+@@ -35,6 +35,9 @@ int bsd_get_ncpu(void);
+ /* exit(2) */
+ static inline abi_long do_bsd_exit(void *cpu_env, abi_long arg1)
+ {
++    if (arg1 != 0) {
++        gemu_log("[qemu pid=%d] exit(%ld)\n", getpid(), (long)arg1);
++    }
+     gdb_exit(arg1);
+     qemu_plugin_user_exit();
+     _exit(arg1);
+diff --git a/bsd-user/bsdload.c b/bsd-user/bsdload.c
+index 5b2ed49dd5..c0a0f80a1b 100644
+--- a/bsd-user/bsdload.c
++++ b/bsd-user/bsdload.c
+@@ -143,6 +143,108 @@ static bool is_there(const char *candidate)
+     return false;
+ }
+ 
++/**
++ * Prepares script files for execution.
++ *
++ * Checks whether the given file is a script, i.e. starts with a shebang (#!).
++ * If so, the first line is parsed to extract the interpreter name and (if
++ * given) the single argument and out arguments are updated accordingly.
++ *
++ * Returns 0 on success, 1 if the file is not a script, <0 for errors.
++ */
++#define BPRM_BUF_SIZE 1024
++
++int load_script_file(const char *filename,
++		     char ***out_new_argv, char **out_filename)
++{
++    int retval, fd;
++    char *i_name = NULL;
++    char **new_argv = NULL;
++    char *cp;
++    char buf[BPRM_BUF_SIZE];
++
++    /* Check if it is a script */
++    fd = open(filename, O_RDONLY);
++    if (fd == -1) {
++        return fd;
++    }
++
++    retval = read(fd, buf, BPRM_BUF_SIZE);
++    close(fd);
++
++    if (retval == -1) {
++        return retval;
++    }
++
++     /* if we have less than 2 bytes, we can guess it is not executable */
++    if (retval < 2) {
++        return -ENOEXEC;
++    }
++
++    /*
++     * Extract interpreter and argument (if given).
++     *
++     * Adapted from the kernel:
++     * https://git.kernel.org/cgit/linux/kernel/git/torvalds/linux.git/tree/fs/binfmt_script.c
++     */
++    if ((buf[0] == '#') && (buf[1] == '!')) {
++        /* Ensure buffer is 0-terminated. */
++        buf[BPRM_BUF_SIZE - 1] = '\0';
++        /* Find end of first line, we might have read more than one... */
++        cp = strchr(buf, '\n');
++        /* ... or the first line might have been truncated. */
++        if (cp == NULL) {
++            cp = buf + BPRM_BUF_SIZE - 1;
++        }
++        /* Truncate buffer to first line. */
++        *cp = '\0';
++        /* Truncate trailing whitespace on the first line. */
++        while (cp > buf) {
++            cp--;
++            if ((*cp == ' ') || (*cp == '\t')) {
++                *cp = '\0';
++            } else {
++                break;
++            }
++        }
++        /* Skip (optional) whitespace between shebang and interpreter name. */
++        for (cp = buf + 2; (*cp == ' ') || (*cp == '\t'); cp++) {
++            /* nothing */ ;
++        }
++        if (*cp == '\0') {
++            return -ENOEXEC; /* No interpreter name found */
++        }
++        /* We now have identified the beginning of the interpreter name. */
++        i_name = cp;
++
++        /*
++         * Skip over the interpreter name till we hit end of string or
++         * whitespace (that may separate an optional argument).
++         */
++        for ( ; *cp && (*cp != ' ') && (*cp != '\t'); cp++) {
++            /* nothing */ ;
++        }
++        /* Mark the end of the interpreter name and skip whitespace behind it. */
++        while ((*cp == ' ') || (*cp == '\t')) {
++            *cp++ = '\0';
++        }
++
++        /* We now have identified the beginning of the argument. */
++        if (*cp) {
++            new_argv = g_new0(char*, 1 + 1);
++            new_argv[0] = g_strdup(cp);
++        }
++        *out_new_argv = new_argv;
++        *out_filename = g_strdup(i_name);
++
++        return 0;
++    } else {
++	*out_new_argv = NULL;
++	*out_filename = NULL;
++        return 1;
++    }
++}
++
+ int loader_exec(const char *filename, char **argv, char **envp,
+                 struct target_pt_regs *regs, struct image_info *infop,
+                 struct bsd_binprm *bprm)
+diff --git a/bsd-user/linux/os-proc.c b/bsd-user/linux/os-proc.c
+index df26f5c6ff..571ca15efc 100644
+--- a/bsd-user/linux/os-proc.c
++++ b/bsd-user/linux/os-proc.c
+@@ -17,6 +17,7 @@
+  *  along with this program; if not, see <http://www.gnu.org/licenses/>.
+  */
+ #include "qemu/osdep.h"
++#include "user/safe-syscall.h"
+ 
+ #include <sys/param.h>
+ #include <sys/queue.h>
+@@ -31,6 +32,133 @@ struct kinfo_proc;
+ #include "qemu.h"
+ 
+ extern const char *exec_path;
++extern const char *qemu_execve_path;
++
++static int qemu_execve(const char *filename, char *argv[],
++                       char *envp[])
++{
++    char **new_argv;
++    int argc, ret, i, offset = 3;
++    char **bprm_argv, *bprm_filename;
++
++    /*
++     * To launch the new process via qemu, we need to modify the filename and
++     * argv[]. When executing a script we also need to splice in the
++     * interpreter and - if set - the interpreter argument into argv. This
++     * allows us to minic real Kernel behaviour: The Kernel allows one to
++     * execute scripts via execve(). QEMU however doesn't run scripts as
++     * 'user executables', i.e. 'qemu-<arch> foo.sh' results in an 'invalid
++     * exec format' error. 'qemu-<arch> <interpreter> foo.sh' works though,
++     * so this is what we do.
++     *
++     * That means that the expected argv layout is as follows:
++     *
++     * For binaries:
++     *   argv[0] = qemu-<arch>  # this qemu binary with execve patch
++     *   argv[1] = -0
++     *   argv[2] = original argv[0] (as 'argv[0] override')
++     *   argv[3] = filename (as 'user executable' to run)
++     *   argv[4] = original argv[1]
++     *   ...
++     *
++     * For scripts:
++     *   argv[0] = qemu-<arch>  # this qemu binary with execve patch
++     *   argv[1] = -0
++     *   argv[2] = interpreter (as 'argv[0] override')
++     *   argv[3] = interpreter (as 'user executable' to run)
++     *   argv[4] = interpreter argument (if any)
++     *   argv[5] = filename
++     *   argv[6] = original argv[1]
++     *   ...
++     */
++
++    /* Determine number of original arguments. */
++    for (argc = 0; argv[argc] != NULL; argc++) {
++        /* nothing */ ;
++    }
++
++    if (do_strace) {
++        int j;
++        fprintf(stderr, "%d\tqemu_execve(\"%s\"", getpid(), filename);
++        for (j = 1; argv[j] != NULL; j++) {
++            fprintf(stderr, ", \"%s\"", argv[j]);
++        }
++        fprintf(stderr, ")\n");
++    }
++
++    /* Check whether we want to execute a shell script or a binary. */
++    ret = load_script_file(filename, &bprm_argv, &bprm_filename);
++
++    /* Bail out in case of errors (file doesn't exist, ...). */
++    if (ret < 0) {
++        if (ret == -1) {
++            return get_errno(ret);
++        } else {
++            return -host_to_target_errno(ENOEXEC);
++        }
++    }
++
++    /*
++     * When executing a script, we need to splice in the interpreter and -
++     * if set - the argument into argv, so additional space is needed.
++     */
++    if (ret == 0) {
++        offset += (bprm_argv != NULL) ? 2 : 1;
++    }
++
++    /* Zeroed out to ensure array is NULL-terminated. */
++    new_argv = g_new0(char*, argc + offset + 1);
++
++    /*
++     * Copy the original arguments with offset. We don't copy argv[0] (which
++     * would become the 'user executable') as we need to override it with
++     * 'filename' (which might be fully-qualified). The original argv[0] is
++     * restored using the '-0' option.
++     */
++    for (i = 1; i < argc; i++) {
++        new_argv[i + offset] = argv[i];
++    }
++
++    new_argv[0] = g_strdup(qemu_execve_path);
++    /* '-0' is used to keep the original argv[0] intact. The actual value is set below. */
++    new_argv[1] = g_strdup("-0");
++    /*
++     * Pass 'filename', which might be a fully-qualified version of the
++     * original argv[0] as the 'user executable' to run to qemu.
++     */
++    new_argv[offset] = g_strdup(filename);
++
++    if (ret == 0) {
++        /*
++         * For scripts, set the interpreter as argv0 of the new process
++         * (argument to -0)...
++         */
++        new_argv[2] = bprm_filename;
++        /* ... and as the executable to execute. */
++        new_argv[3] = bprm_filename;
++
++        /* If set, add the interpreter argument as well. */
++        if (bprm_argv != NULL) {
++            new_argv[4] = bprm_argv[0];
++        }
++    } else {
++        /* For binaries, restore original argv[0]. */
++        new_argv[2] = argv[0];
++    }
++
++    /*
++     * Although execve() is not an interruptible syscall it is
++     * a special case where we must use the safe_syscall wrapper:
++     * if we allow a signal to happen before we make the host
++     * syscall then we will 'lose' it, because at the point of
++     * execve the process leaves QEMU's control. So we use the
++     * safe syscall wrapper to ensure that we either take the
++     * signal as a guest signal, or else it does not happen
++     * before the execve completes and makes it the other
++     * program's problem.
++     */
++    return safe_syscall(__NR_execve, qemu_execve_path, new_argv, envp);
++}
+ 
+ /*
+  * execve/fexecve
+@@ -117,14 +245,30 @@ abi_long freebsd_exec_common(abi_ulong path_or_fd, abi_ulong guest_argp,
+     }
+ 
+     if (do_fexec) {
+-        ret = get_errno(fexecve((int)path_or_fd, argp, envp));
++        char fd_path[PATH_MAX];
++        char proc_path[32];
++        snprintf(proc_path, sizeof(proc_path), "/proc/self/fd/%d", (int)path_or_fd);
++        ssize_t len = readlink(proc_path, fd_path, sizeof(fd_path) - 1);
++        if (len > 0) {
++            fd_path[len] = '\0';
++            if (do_strace) {
++                fprintf(stderr, "%d\tqemu_fexecve(fd=%d -> \"%s\")\n",
++                        getpid(), (int)path_or_fd, fd_path);
++            }
++            ret = get_errno(qemu_execve(fd_path, argp, envp));
++        } else {
++            fprintf(stderr, "%d\tqemu: WARNING: fexecve(fd=%d): readlink(\"%s\") failed: %s"
++                    " -- falling back to plain fexecve(), child will NOT be emulated!\n",
++                    getpid(), (int)path_or_fd, proc_path, strerror(errno));
++            ret = get_errno(fexecve((int)path_or_fd, argp, envp));
++        }
+     } else {
+         p = lock_user_string(path_or_fd);
+         if (p == NULL) {
+             ret = -TARGET_EFAULT;
+             goto execve_end;
+         }
+-        ret = get_errno(execve(p, argp, envp));
++        ret = get_errno(qemu_execve(p, argp, envp));
+         unlock_user(p, path_or_fd, 0);
+     }
+ 
+diff --git a/bsd-user/main.c b/bsd-user/main.c
+index 6d04850e6b..008779cd9f 100644
+--- a/bsd-user/main.c
++++ b/bsd-user/main.c
+@@ -56,6 +56,7 @@
+ #include "qemu/guest-random.h"
+ #include "gdbstub/user.h"
+ #include "exec/page-vary.h"
++#include "elf.h"
+ 
+ #include "target_arch_cpu.h"
+ 
+@@ -105,6 +106,7 @@ unsigned long guest_addr_max;
+ bool bsd_user_strict;                /* Abort for unimplemned things */
+ 
+ const char *interp_prefix = CONFIG_QEMU_INTERP_PREFIX;
++const char *qemu_execve_path = NULL;
+ 
+ abi_ulong target_maxtsiz = TARGET_MAXTSIZ;   /* max text size */
+ abi_ulong target_dfldsiz = TARGET_DFLDSIZ;   /* initial data size limit */
+@@ -305,8 +307,41 @@ adjust_ssize(void)
+     setrlimit(RLIMIT_STACK, &rl);
+ }
+ 
++static void init_execve(void)
++{
++    const char *execfn;
++    char buf[PATH_MAX];
++    char *ret;
++    int len;
++
++    /* try getauxval() */
++    execfn = (const char *)qemu_getauxval(AT_EXECFN);
++
++    if (execfn != 0) {
++        ret = realpath(execfn, buf);
++
++        if (ret != NULL) {
++            qemu_execve_path = g_strdup(buf);
++            return;
++        }
++    }
++
++    /* try /proc/self/exe */
++    len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
++
++    if (len != -1) {
++        buf[len] = '\0';
++        qemu_execve_path = g_strdup(buf);
++        return;
++    }
++
++    fprintf(stderr, "qemu_execve: unable to determine interpreter's path\n");
++    exit(EXIT_FAILURE);
++}
++
+ int main(int argc, char **argv)
+ {
++    setvbuf(stderr, NULL, _IONBF, 0);
+     const char *filename;
+     const char *log_file = NULL;
+     const char *log_mask = NULL;
+@@ -338,6 +373,8 @@ int main(int argc, char **argv)
+     qemu_init_cpu_list();
+     module_call_init(MODULE_INIT_QOM);
+ 
++    init_execve();
++
+     envlist = envlist_create();
+ 
+     /*
+diff --git a/bsd-user/qemu.h b/bsd-user/qemu.h
+index d304c1149c..1009401d76 100644
+--- a/bsd-user/qemu.h
++++ b/bsd-user/qemu.h
+@@ -197,6 +197,8 @@ int loader_exec(const char *filename, char **argv, char **envp,
+              struct bsd_binprm *bprm);
+ 
+ int load_elf_binary(struct bsd_binprm *bprm, struct image_info *info);
++int load_script_file(const char *filename,
++		     char ***out_new_argv, char **out_filename);
+ int is_target_elf_binary(int fd);
+ 
+ abi_long memcpy_to_target(abi_ulong dest, const void *src,
+-- 
+2.39.5
+

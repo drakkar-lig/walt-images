@@ -1,0 +1,72 @@
+diff --git a/bsd-user/bsd-file.h b/bsd-user/bsd-file.h
+index eff8c1a255..380b69dfec 100644
+--- a/bsd-user/bsd-file.h
++++ b/bsd-user/bsd-file.h
+@@ -22,6 +22,7 @@
+ 
+ #if defined(__linux__)
+ #include <sys/file.h>
++#include <sys/syscall.h>
+ #endif
+ 
+ #include "qemu/path.h"
+@@ -96,6 +97,10 @@ static abi_long do_bsd_read(abi_long arg1, abi_long arg2, abi_long arg3)
+         return -TARGET_EFAULT;
+     }
+     ret = get_errno(safe_read(arg1, p, arg3));
++    if (arg1 <= 5 && arg3 <= 16) {
++        fprintf(stderr, "[QEMU-IO] read(fd=%ld, size=%ld) = %ld (tid=%ld)\n",
++                (long)arg1, (long)arg3, (long)ret, (long)syscall(SYS_gettid));
++    }
+     unlock_user(p, arg2, ret);
+ 
+     return ret;
+diff --git a/bsd-user/linux/os-thread.c b/bsd-user/linux/os-thread.c
+index f81124b68a..cb2cf8f73e 100644
+--- a/bsd-user/linux/os-thread.c
++++ b/bsd-user/linux/os-thread.c
+@@ -142,6 +142,11 @@ void *new_freebsd_thread_start(void *arg)
+     tid = gettid();
+     TaskState *ts = get_task_state(cpu);
+     ts->ts_tid = tid;
++    fprintf(stderr, "[QEMU-THREAD] new thread started: linux_tid=%ld start_func=0x%lx arg=0x%lx stack=0x%lx+%lu tls=0x%lx\n",
++            (long)tid, (unsigned long)info->param.start_func,
++            (unsigned long)info->param.arg,
++            (unsigned long)info->param.stack_base, (unsigned long)info->param.stack_size,
++            (unsigned long)info->param.tls_base);
+ 
+     /* copy out the child TID to both locations */
+     if (info->param.child_tid) {
+@@ -222,7 +227,13 @@ static void translate_timeout(void *t, size_t tsz, struct timespec *timeout, str
+         case TARGET_CLOCK_REALTIME:
+         case TARGET_CLOCK_REALTIME_FAST:
+         case TARGET_CLOCK_REALTIME_PRECISE:
+-        *op_flags |= FUTEX_CLOCK_REALTIME;
++        /*
++         * Do NOT add FUTEX_CLOCK_REALTIME here: Linux only supports that flag
++         * with FUTEX_WAIT_BITSET, not plain FUTEX_WAIT — using it with
++         * FUTEX_WAIT returns ENOSYS (Linux 38 → FreeBSD 78).
++         * We always convert absolute times to relative below, so the clock
++         * id for the Linux futex call is irrelevant.
++         */
+         host_clockid = CLOCK_REALTIME;
+         break;
+         default:
+@@ -371,7 +382,7 @@ static abi_long _umtx_wait_uint_private(uint32_t *addr, uint32_t target_val,
+     struct timespec timeout;
+     int op = QEMU_UMTX_OP(UMTX_OP_WAIT_UINT_PRIVATE);
+     translate_timeout(t, tsz, &timeout, &timeoutp, &op);
+-    return get_errno(safe_futex(addr, op, target_val, NULL, NULL, 0));
++    return get_errno(safe_futex(addr, op, target_val, timeoutp, NULL, 0));
+ }
+ 
+ abi_long freebsd_umtx_wait_uint_private(abi_ulong obj, uint32_t target_val,
+@@ -421,7 +432,7 @@ static abi_long _umtx_wait(uint32_t *addr, uint32_t target_val, size_t tsz,
+     struct timespec timeout;
+     int op = QEMU_UMTX_OP(UMTX_OP_WAIT);
+     translate_timeout(t, tsz, &timeout, &timeoutp, &op);
+-    return get_errno(safe_futex(addr, op, target_val, NULL, NULL, 0));
++    return get_errno(safe_futex(addr, op, target_val, timeoutp, NULL, 0));
+ }
+ 
+ abi_long freebsd_umtx_wait(abi_ulong targ_addr, abi_ulong target_id, size_t tsz,

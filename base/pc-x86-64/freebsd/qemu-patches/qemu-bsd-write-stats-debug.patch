@@ -1,0 +1,249 @@
+diff --git a/bsd-user/bsd-proc.h b/bsd-user/bsd-proc.h
+index 97821e0e6e..6489f7d085 100644
+--- a/bsd-user/bsd-proc.h
++++ b/bsd-user/bsd-proc.h
+@@ -40,6 +40,9 @@ static inline abi_long do_bsd_exit(void *cpu_env, abi_long arg1)
+     }
+     gdb_exit(arg1);
+     qemu_plugin_user_exit();
++#if defined(__linux__)
++    qemu_dump_write_stats((int)arg1);
++#endif
+     _exit(arg1);
+ 
+     return 0;
+diff --git a/bsd-user/linux/os-file.c b/bsd-user/linux/os-file.c
+index 521cf20a3f..12532ed36c 100644
+--- a/bsd-user/linux/os-file.c
++++ b/bsd-user/linux/os-file.c
+@@ -3,6 +3,127 @@
+ #include "qemu/osdep.h"
+ #include "qemu.h"
+ 
++#if defined(__linux__)
++#include <sys/stat.h>
++#include <stdatomic.h>
++#include <sys/syscall.h>
++
++/*
++ * I/O diagnostic for fds 0-2 (stdin/stdout/stderr).
++ *
++ * When QEMU_WRITE_STATS=1 is set, counts writes/reads and bytes on fds 0-2
++ * and records the fd type (pipe/tty/socket/…) on first access.
++ * At process exit, qemu_dump_write_stats(exit_code) prints one summary line.
++ *
++ * Usage: docker run -e QEMU_WRITE_STATS=1 …
++ */
++
++#define WRITE_STATS_MAX_FD  3
++
++/* fd type codes stored as _Atomic int */
++#define FTYPE_UNKNOWN  0
++#define FTYPE_PIPE     1
++#define FTYPE_SOCKET   2
++#define FTYPE_REGULAR  3
++#define FTYPE_TTY      4
++#define FTYPE_ERROR    5
++#define FTYPE_OTHER    6
++
++static _Atomic int  write_stats_state;  /* 0=uninit, 1=enabled, 2=disabled */
++static _Atomic int  stat_fd_type[WRITE_STATS_MAX_FD];
++static _Atomic long stat_writes[WRITE_STATS_MAX_FD];
++static _Atomic long stat_wbytes[WRITE_STATS_MAX_FD];
++static _Atomic long stat_reads[WRITE_STATS_MAX_FD];
++static _Atomic long stat_rbytes[WRITE_STATS_MAX_FD];
++
++static int write_stats_enabled(void)
++{
++    int s = atomic_load_explicit(&write_stats_state, memory_order_relaxed);
++    if (s != 0) return (s == 1);
++    int new_s = (getenv("QEMU_WRITE_STATS") != NULL) ? 1 : 2;
++    int expected = 0;
++    if (!atomic_compare_exchange_strong(&write_stats_state, &expected, new_s)) {
++        new_s = atomic_load(&write_stats_state);
++    }
++    return (new_s == 1);
++}
++
++static int get_fd_type(int fd)
++{
++    struct stat st;
++    if (fstat(fd, &st) < 0) return FTYPE_ERROR;
++    if (S_ISFIFO(st.st_mode)) return FTYPE_PIPE;
++    if (S_ISSOCK(st.st_mode)) return FTYPE_SOCKET;
++    if (S_ISREG(st.st_mode))  return FTYPE_REGULAR;
++    if (isatty(fd))            return FTYPE_TTY;
++    return FTYPE_OTHER;
++}
++
++static void record_fd_type(int fd)
++{
++    if (atomic_load_explicit(&stat_fd_type[fd], memory_order_relaxed) == FTYPE_UNKNOWN) {
++        int t = get_fd_type(fd);
++        int expected = FTYPE_UNKNOWN;
++        atomic_compare_exchange_strong(&stat_fd_type[fd], &expected, t);
++    }
++}
++
++void qemu_track_write_fd(int fd, ssize_t nbytes)
++{
++    if (!write_stats_enabled()) return;
++    if (fd < 0 || fd >= WRITE_STATS_MAX_FD || nbytes <= 0) return;
++    record_fd_type(fd);
++    atomic_fetch_add(&stat_writes[fd], 1L);
++    atomic_fetch_add(&stat_wbytes[fd], (long)nbytes);
++}
++
++void qemu_track_read_fd(int fd, ssize_t nbytes)
++{
++    if (!write_stats_enabled()) return;
++    if (fd < 0 || fd >= WRITE_STATS_MAX_FD || nbytes <= 0) return;
++    record_fd_type(fd);
++    atomic_fetch_add(&stat_reads[fd], 1L);
++    atomic_fetch_add(&stat_rbytes[fd], (long)nbytes);
++}
++
++void qemu_dump_write_stats(int exit_code)
++{
++    static const char *ftype_name[] = {
++        "?", "pipe", "socket", "file", "tty", "error", "other"
++    };
++    char buf[512];
++    int n;
++
++    if (!write_stats_enabled()) return;
++
++    n = snprintf(buf, sizeof(buf), "[qemu-stats pid=%d exit=%d",
++                 (int)getpid(), exit_code);
++
++    for (int fd = 0; fd < WRITE_STATS_MAX_FD; fd++) {
++        long w  = atomic_load(&stat_writes[fd]);
++        long wb = atomic_load(&stat_wbytes[fd]);
++        long r  = atomic_load(&stat_reads[fd]);
++        long rb = atomic_load(&stat_rbytes[fd]);
++        if (w <= 0 && r <= 0) continue;
++
++        int t = atomic_load(&stat_fd_type[fd]);
++        if (t <= 0 || t >= (int)(sizeof(ftype_name) / sizeof(ftype_name[0]))) {
++            t = get_fd_type(fd);
++        }
++        n += snprintf(buf + n, sizeof(buf) - n, " fd%d=%s",
++                      fd, ftype_name[t]);
++        if (w > 0)
++            n += snprintf(buf + n, sizeof(buf) - n, " w%d=%ld(%ld)", fd, w, wb);
++        if (r > 0)
++            n += snprintf(buf + n, sizeof(buf) - n, " r%d=%ld(%ld)", fd, r, rb);
++    }
++
++    n += snprintf(buf + n, sizeof(buf) - n, "]\n");
++    if (n > (int)sizeof(buf) - 1) n = sizeof(buf) - 1;
++    (void)syscall(HOST_SYS_write, 2, buf, (size_t)n);
++}
++#endif /* defined(__linux__) */
++
+ /* Utility function: Table-driven functions to translate bitmasks
+  * between host and target formats
+  */
+diff --git a/bsd-user/linux/os-syscall.c b/bsd-user/linux/os-syscall.c
+index ee5ef595c5..7f5ebede94 100644
+--- a/bsd-user/linux/os-syscall.c
++++ b/bsd-user/linux/os-syscall.c
+@@ -697,6 +697,7 @@ static abi_long freebsd_syscall(void *cpu_env, int num, abi_long arg1,
+          */
+     case TARGET_FREEBSD_NR_read: /* read(2) */
+         ret = do_bsd_read(arg1, arg2, arg3);
++        if ((int)arg1 < 3 && !is_error(ret)) { qemu_track_read_fd((int)arg1, (ssize_t)ret); }
+         break;
+ 
+     case TARGET_FREEBSD_NR_pread: /* pread(2) */
+@@ -705,6 +706,7 @@ static abi_long freebsd_syscall(void *cpu_env, int num, abi_long arg1,
+ 
+     case TARGET_FREEBSD_NR_readv: /* readv(2) */
+         ret = do_bsd_readv(arg1, arg2, arg3);
++        if ((int)arg1 < 3 && !is_error(ret)) { qemu_track_read_fd((int)arg1, (ssize_t)ret); }
+         break;
+ 
+     case TARGET_FREEBSD_NR_preadv: /* preadv(2) */
+@@ -713,6 +715,7 @@ static abi_long freebsd_syscall(void *cpu_env, int num, abi_long arg1,
+ 
+     case TARGET_FREEBSD_NR_write: /* write(2) */
+         ret = do_bsd_write(arg1, arg2, arg3);
++        if ((int)arg1 < 3 && !is_error(ret)) { qemu_track_write_fd((int)arg1, (ssize_t)ret); }
+         break;
+ 
+     case TARGET_FREEBSD_NR_pwrite: /* pwrite(2) */
+@@ -721,6 +724,7 @@ static abi_long freebsd_syscall(void *cpu_env, int num, abi_long arg1,
+ 
+     case TARGET_FREEBSD_NR_writev: /* writev(2) */
+         ret = do_bsd_writev(arg1, arg2, arg3);
++        if ((int)arg1 < 3 && !is_error(ret)) { qemu_track_write_fd((int)arg1, (ssize_t)ret); }
+         break;
+ 
+     case TARGET_FREEBSD_NR_pwritev: /* pwritev(2) */
+diff --git a/bsd-user/linux/qemu-os.h b/bsd-user/linux/qemu-os.h
+index 1e95819673..1f561cfd12 100644
+--- a/bsd-user/linux/qemu-os.h
++++ b/bsd-user/linux/qemu-os.h
+@@ -85,6 +85,9 @@ typedef struct fhandle  fhandle_t;
+ #if defined(__linux__)
+ int safe_dup(int oldfd);
+ int safe_dup2(int oldfd, int newfd);
++void qemu_track_write_fd(int fd, ssize_t nbytes);
++void qemu_track_read_fd(int fd, ssize_t nbytes);
++void qemu_dump_write_stats(int exit_code);
+ #endif
+ 
+ #define PAGE_SHIFT 12
+diff --git a/bsd-user/signal.c b/bsd-user/signal.c
+index 27e3616f96..148971aa17 100644
+--- a/bsd-user/signal.c
++++ b/bsd-user/signal.c
+@@ -548,6 +548,18 @@ void dump_core_and_abort(int target_sig)
+     act.sa_handler = SIG_DFL;
+     sigaction(host_sig, &act, NULL);
+ 
++#if defined(__linux__)
++    {
++        /* Diagnostic: print which signal kills this process. */
++        char buf[80];
++        int n = snprintf(buf, sizeof(buf),
++                         "[qemu pid=%d killed by signal %d]\n",
++                         (int)getpid(), target_sig);
++        (void)write(2, buf, n);
++        qemu_dump_write_stats(-target_sig);
++    }
++#endif
++
+     kill(getpid(), host_sig);
+ 
+     /*
+@@ -622,7 +634,7 @@ void force_sig_fault(int sig, int code, abi_ulong addr)
+ static void host_signal_handler(int host_sig, siginfo_t *info, void *puc)
+ {
+     CPUState *cpu = thread_cpu;
+-    TaskState *ts = get_task_state(cpu);
++    TaskState *ts;
+     target_siginfo_t tinfo;
+     ucontext_t *uc = puc;
+     struct emulated_sigtable *k;
+@@ -630,6 +642,17 @@ static void host_signal_handler(int host_sig, siginfo_t *info, void *puc)
+     uintptr_t pc = 0;
+     bool sync_sig = false;
+ 
++    /*
++     * Some internal host threads are not associated with an emulated CPU.
++     * Process-directed signals (notably SIGALRM from progress timers) can be
++     * delivered to such threads; without a CPU context, there is no target
++     * state to update.
++     */
++    if (cpu == NULL) {
++        return;
++    }
++    ts = get_task_state(cpu);
++
+     if (host_sig == host_interrupt_signal) {
+         ts->signal_pending = 1;
+         cpu_exit(thread_cpu);
+-- 
+2.39.5
+

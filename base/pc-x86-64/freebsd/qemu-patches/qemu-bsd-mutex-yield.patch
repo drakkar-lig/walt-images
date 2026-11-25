@@ -1,0 +1,26 @@
+diff --git a/bsd-user/linux/os-thread.c b/bsd-user/linux/os-thread.c
+index 9add8f5373..a0479059bf 100644
+--- a/bsd-user/linux/os-thread.c
++++ b/bsd-user/linux/os-thread.c
+@@ -1067,8 +1067,17 @@ abi_long freebsd_lock_umutex(abi_ulong target_addr, uint32_t id,
+         if ((owner & ~TARGET_UMUTEX_CONTESTED) == 0) {
+             /* Lock is unowned. */
+             if (TARGET_UMUTEX_WAIT == mode) {
+-                /* Waiting on an unlocked mutex; bail out. */
++                /*
++                 * Waiting on an unlocked mutex; bail out. But first yield
++                 * the CPU: the application called MUTEX_WAIT because its
++                 * CAS to acquire just failed (someone held the lock), yet
++                 * by the time we read m_owner it has become 0. The holder
++                 * may still be running in userspace and will re-acquire
++                 * before the caller's next CAS succeeds. Yielding gives the
++                 * holder time to finish and truly release, breaking the spin.
++                 */
+                 unlock_user_struct(target_umutex, target_addr, 1);
++                sched_yield();
+                 return 0;
+             }
+ 
+-- 
+2.39.5
+

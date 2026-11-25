@@ -1,0 +1,37 @@
+diff --git a/bsd-user/linux/os-syscall.c b/bsd-user/linux/os-syscall.c
+index 0a99bb32e0..435770dd47 100644
+--- a/bsd-user/linux/os-syscall.c
++++ b/bsd-user/linux/os-syscall.c
+@@ -1897,6 +1897,7 @@ abi_long do_freebsd_syscall(void *cpu_env, int num, abi_long arg1,
+     abi_long ret;
+ 
+     if (do_strace) {
++        fprintf(stderr, "[raw pid=%d] syscall#%d\n", getpid(), num);
+         record_syscall(ts, num, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8);
+     }
+ 
+diff --git a/bsd-user/linux/os-proc.h b/bsd-user/linux/os-proc.h
+index 7adf340a3f..94e9fb9e66 100644
+--- a/bsd-user/linux/os-proc.h
++++ b/bsd-user/linux/os-proc.h
+@@ -75,11 +75,20 @@ static inline abi_long do_freebsd_wait4(abi_long arg1, abi_ulong target_status,
+     if (target_rusage) {
+         rusage_ptr = &rusage;
+     }
++    int raw_status = 0;
+     ret = get_errno(safe_wait4(arg1, &status, h_opts, rusage_ptr));
++    raw_status = status;
+ 
+     if (ret < 0) {
++        fprintf(stderr, "[wait4 pid=%d] wait4(%ld) returned error %ld\n",
++                getpid(), (long)arg1, (long)ret);
+         return ret;
+     }
++    fprintf(stderr, "[wait4 pid=%d] wait4(%ld) ret=%ld raw_status=0x%x"
++            " WIFEXITED=%d WEXITSTATUS=%d WIFSIGNALED=%d WTERMSIG=%d\n",
++            getpid(), (long)arg1, (long)ret, raw_status,
++            WIFEXITED(raw_status), WEXITSTATUS(raw_status),
++            WIFSIGNALED(raw_status), WTERMSIG(raw_status));
+     if (target_status != 0) {
+         status = host_to_target_waitstatus(status);
+         if (put_user_s32(status, target_status) != 0) {

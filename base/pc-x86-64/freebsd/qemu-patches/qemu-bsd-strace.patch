@@ -1,0 +1,16 @@
+diff --git a/bsd-user/linux/truss.c b/bsd-user/linux/truss.c
+index 5603021218..058e82a7f1 100644
+--- a/bsd-user/linux/truss.c
++++ b/bsd-user/linux/truss.c
+@@ -182,7 +182,7 @@ void record_syscall_ret(TaskState *ts, int num, abi_ulong ret, abi_ulong ret2)
+         ret = ret2 = (abi_ulong)-1;
+     }
+     print_syscall_ret(ts, ret, ret2, error);
+-    gemu_log("%s\n", ts->trace_buf);
++    gemu_log("%ld\t%s\n", (long)syscall(SYS_gettid), ts->trace_buf);
+     free_syscall(ts);
+ }
+ 
+-- 
+2.39.5
+

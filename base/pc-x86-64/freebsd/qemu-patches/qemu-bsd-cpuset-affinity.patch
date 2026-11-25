@@ -1,0 +1,94 @@
+diff --git a/bsd-user/linux/os-misc.h b/bsd-user/linux/os-misc.h
+index 8ea305e77a..99c5a947d8 100644
+--- a/bsd-user/linux/os-misc.h
++++ b/bsd-user/linux/os-misc.h
+@@ -247,9 +247,6 @@ static inline abi_long do_freebsd_cpuset_getaffinity(cpulevel_t level,
+     pid_t id;    /* 64-bit */
+     abi_ulong target_mask;
+ 
+-    if (level != TARGET_CPU_LEVEL_WHICH && which != TARGET_CPU_WHICH_TID)
+-        abort();
+-
+ #if TARGET_ABI_BITS == 32
+     id = (pid_t)target_arg64(arg3, arg4);
+     //setsize = arg5;
+@@ -260,8 +257,19 @@ static inline abi_long do_freebsd_cpuset_getaffinity(cpulevel_t level,
+     target_mask = arg5;
+ #endif
+ 
+-    if (id == -1)
++    /*
++     * We only really support querying the affinity mask of the calling
++     * thread/process (id == -1, i.e. "self"). For any other level/which
++     * combination (e.g. CPU_LEVEL_ROOT / CPU_WHICH_CPUSET, used by libthr
++     * at startup to size per-CPU structures), fall back to "self" too: a
++     * typical container has no meaningful per-thread cpuset restrictions
++     * beyond what cgroups impose uniformly on every thread, so this is a
++     * reasonable approximation and avoids aborting for combinations we
++     * don't specifically special-case.
++     */
++    if (id == -1 || which != TARGET_CPU_WHICH_TID) {
+         id = 0;
++    }
+ 
+     ret = get_errno(sched_getaffinity(id, sizeof(mask), &mask));
+     if (ret == 0) {
+@@ -300,7 +308,54 @@ static inline abi_long do_freebsd_cpuset_setaffinity(cpulevel_t level,
+ 
+ 	return ret;
+ #else
+-    abort();
++    cpu_set_t mask;
++    abi_long ret;
++    pid_t id; /* 64-bit */
++    abi_ulong target_mask;
++    abi_ulong *target_mask_p;
++    int i, j, k;
++    abi_ulong b;
++
++#if TARGET_ABI_BITS == 32
++    id = (pid_t)target_arg64(arg3, arg4);
++    target_mask = arg6;
++#else
++    id = (pid_t)arg3;
++    target_mask = arg5;
++#endif
++
++    /* See do_freebsd_cpuset_getaffinity() for why we treat any non-TID
++     * "which" as "self" here too. */
++    if (id == -1 || which != TARGET_CPU_WHICH_TID) {
++        id = 0;
++    }
++
++    /*
++     * Convert the target cpuset_t bitmask into a host cpu_set_t. This
++     * mirrors copy_from_user_cpuset_mask() above, which can't be reused
++     * as-is here because it operates on FreeBSD's cpuset_t (only
++     * compiled for non-Linux hosts), not Linux's cpu_set_t.
++     */
++    target_mask_p = lock_user(VERIFY_READ, target_mask, (CPU_SETSIZE / 8), 1);
++    if (target_mask_p == NULL) {
++        return -TARGET_EFAULT;
++    }
++    CPU_ZERO(&mask);
++    k = 0;
++    for (i = 0; i < ((CPU_SETSIZE / 8) / sizeof(abi_ulong)); i++) {
++        __get_user(b, &target_mask_p[i]);
++        for (j = 0; j < TARGET_ABI_BITS; j++) {
++            if ((b >> j) & 1) {
++                CPU_SET(k, &mask);
++            }
++            k++;
++        }
++    }
++    unlock_user(target_mask_p, target_mask, 0);
++
++    ret = get_errno(sched_setaffinity(id, sizeof(mask), &mask));
++
++    return ret;
+ #endif
+ }
+ 
+-- 
+2.39.5
+

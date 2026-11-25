@@ -1,0 +1,260 @@
+diff --git a/bsd-user/bsd-file.h b/bsd-user/bsd-file.h
+index eff8c1a255..fb7a67a34f 100644
+--- a/bsd-user/bsd-file.h
++++ b/bsd-user/bsd-file.h
+@@ -20,9 +20,7 @@
+ #ifndef BSD_FILE_H
+ #define BSD_FILE_H
+ 
+-#if defined(__linux__)
+ #include <sys/file.h>
+-#endif
+ 
+ #include "qemu/path.h"
+ 
+@@ -515,13 +513,13 @@ static abi_long do_bsd___getcwd(abi_long arg1, abi_long arg2)
+ /* dup(2) */
+ static abi_long do_bsd_dup(abi_long arg1)
+ {
+-    return get_errno(dup(arg1));
++    return get_errno(safe_dup(arg1));
+ }
+ 
+ /* dup2(2) */
+ static abi_long do_bsd_dup2(abi_long arg1, abi_long arg2)
+ {
+-    return get_errno(dup2(arg1, arg2));
++    return get_errno(safe_dup2(arg1, arg2));
+ }
+ 
+ /* truncate(2) */
+diff --git a/bsd-user/linux/os-file.h b/bsd-user/linux/os-file.h
+index 5bede3236b..225018028d 100644
+--- a/bsd-user/linux/os-file.h
++++ b/bsd-user/linux/os-file.h
+@@ -72,8 +72,7 @@ static inline abi_long do_bsd_chflagsat(int fd, abi_ulong path,
+ static inline abi_long do_freebsd_close_range(unsigned int lowfd,
+     unsigned int highfd, int flags)
+ {
+-
+-    return (close_range(lowfd, highfd, flags));
++    return close_range(lowfd, highfd, flags);
+ }
+ 
+ #endif /* __FreeBSD_version >= 1300091 */
+@@ -142,7 +141,36 @@ static inline abi_long do_freebsd___specialfd(int type, abi_ulong req,
+ 
+     return ret;
+ #else
+-    abort();
++    /* Linux: implement __specialfd using eventfd2() */
++    abi_long ret = -TARGET_EINVAL;
++
++    switch (type) {
++    case TARGET_SPECIALFD_EVENT: {
++        struct target_specialfd_eventfd *target_eventfd;
++        unsigned int initval;
++        int bsd_flags, linux_flags = 0;
++
++        if (!lock_user_struct(VERIFY_READ, target_eventfd, req, 0)) {
++            return -TARGET_EFAULT;
++        }
++        initval = tswap32(target_eventfd->initval);
++        bsd_flags = tswap32(target_eventfd->flags);
++        unlock_user_struct(target_eventfd, req, 0);
++
++        /* Translate FreeBSD EFD flags to Linux EFD flags:
++         * FreeBSD EFD_SEMAPHORE = 1 (same as Linux)
++         * FreeBSD EFD_NONBLOCK = O_NONBLOCK = 4
++         * FreeBSD EFD_CLOEXEC = O_CLOEXEC = 0x100000 */
++        if (bsd_flags & 1)        linux_flags |= 1;       /* EFD_SEMAPHORE */
++        if (bsd_flags & 4)        linux_flags |= 0x800;   /* EFD_NONBLOCK */
++        if (bsd_flags & 0x100000) linux_flags |= 0x80000; /* EFD_CLOEXEC */
++
++        ret = get_errno(syscall(SYS_eventfd2, initval, linux_flags));
++        break;
++    }
++    }
++
++    return ret;
+ #endif
+ }
+ #endif /* __FreeBSD_version >= 1300037 */
+diff --git a/bsd-user/linux/os-stat.h b/bsd-user/linux/os-stat.h
+index c063ffbc02..7956d3973b 100644
+--- a/bsd-user/linux/os-stat.h
++++ b/bsd-user/linux/os-stat.h
+@@ -761,6 +761,42 @@ static inline abi_long do_freebsd_fcntl(abi_long arg1, abi_long arg2,
+         return 0;
+     }
+ 
++    if (arg2 == TARGET_F_DUP2FD || arg2 == TARGET_F_DUP2FD_CLOEXEC) {
++        int newfd = (int)arg3;
++
++        if (newfd < 0) {
++            return -TARGET_EINVAL;
++        }
++
++        if (arg1 == newfd) {
++            int fdflags = fcntl(arg1, F_GETFD, 0);
++            if (fdflags < 0) {
++                return get_errno(-1);
++            }
++            if (arg2 == TARGET_F_DUP2FD_CLOEXEC) {
++                if (fcntl(arg1, F_SETFD, fdflags | FD_CLOEXEC) < 0) {
++                    return get_errno(-1);
++                }
++            }
++            ret = arg1;
++        } else if (arg2 == TARGET_F_DUP2FD_CLOEXEC) {
++#if defined(__linux__) && defined(__NR_dup3)
++            ret = get_errno(syscall(__NR_dup3, arg1, newfd, O_CLOEXEC));
++#else
++            ret = get_errno(safe_dup2(arg1, newfd));
++            if (!is_error(ret)) {
++                int fdflags = fcntl(newfd, F_GETFD, 0);
++                if (fdflags < 0 || fcntl(newfd, F_SETFD, fdflags | FD_CLOEXEC) < 0) {
++                    return get_errno(-1);
++                }
++            }
++#endif
++        } else {
++            ret = get_errno(safe_dup2(arg1, newfd));
++        }
++        return ret;
++    }
++
+     host_cmd = target_to_host_fcntl_cmd(arg2, arg3);
+     if (host_cmd.cmd < 0) {
+         return host_cmd.cmd;
+@@ -809,6 +845,9 @@ static inline abi_long do_freebsd_fcntl(abi_long arg1, abi_long arg2,
+         break;
+ 
+     case TARGET_F_DUPFD:
++    case TARGET_F_DUPFD_CLOEXEC:
++        ret = get_errno(safe_fcntl(arg1, host_cmd.cmd, host_cmd.arg));
++        break;
+     case TARGET_F_DUP2FD:
+     case TARGET_F_GETOWN:
+     case TARGET_F_SETOWN:
+diff --git a/bsd-user/linux/os-syscall.c b/bsd-user/linux/os-syscall.c
+index f8de83d3cc..ee5ef595c5 100644
+--- a/bsd-user/linux/os-syscall.c
++++ b/bsd-user/linux/os-syscall.c
+@@ -51,6 +51,10 @@ static safe_syscall2(long, getcwd, char *, buf, size_t, size);
+ #include "bsd-signal.h"
+ #include "bsd-socket.h"
+ 
++/* used in bsd-file/os-stat dup* handlers */
++safe_syscall1(int, dup, int, oldfd);
++safe_syscall2(int, dup2, int, oldfd, int, newfd);
++
+ /* *BSD dependent syscall shims */
+ #include "os-file.h"
+ #include "os-time.h"
+@@ -84,11 +88,6 @@ safe_syscall6(int, kevent, int, kq, const struct kevent *, changelist,
+     const struct timespec *, timeout);
+ #endif
+ 
+-/* BSD dependent syscall shims */
+-#include "os-stat.h"
+-#include "os-proc.h"
+-#include "os-misc.h"
+-
+ /* I/O */
+ safe_syscall4(int, openat, int, fd, const char *, path, int, flags, mode_t,
+     mode);
+diff --git a/bsd-user/linux/os-time.c b/bsd-user/linux/os-time.c
+index 79fb9ab9fd..6e97ddb3b9 100644
+--- a/bsd-user/linux/os-time.c
++++ b/bsd-user/linux/os-time.c
+@@ -27,6 +27,7 @@
+ #include "qemu.h"
+ #include "qemu-os.h"
+ 
++
+ /*
+  * FreeBSD time conversion functions
+  */
+diff --git a/bsd-user/linux/os-time.h b/bsd-user/linux/os-time.h
+index 893967dd6e..b1c098cf8f 100644
+--- a/bsd-user/linux/os-time.h
++++ b/bsd-user/linux/os-time.h
+@@ -40,6 +40,7 @@
+ #include "bsd-socket.h"
+ 
+ 
++
+ int safe_clock_nanosleep(clockid_t clock_id, int flags,
+      const struct timespec *rqtp, struct timespec *rmtp);
+ int safe_nanosleep(const struct timespec *rqtp, struct timespec *rmtp);
+@@ -485,7 +486,7 @@ static inline abi_long do_freebsd_select(CPUArchState *env, int n,
+ {
+     fd_set rfds, wfds, efds;
+     fd_set *rfds_ptr, *wfds_ptr, *efds_ptr;
+-    struct timeval tv, *tvp;
++    struct timeval tv, tv_orig, *tvp;
+     abi_long ret, error;
+ 
+     ret = copy_from_user_fdset_ptr(&rfds, &rfds_ptr, rfd_addr, n);
+@@ -506,6 +507,7 @@ static inline abi_long do_freebsd_select(CPUArchState *env, int n,
+             return -TARGET_EFAULT;
+         }
+         tvp = &tv;
++        tv_orig = tv;  /* save original; FreeBSD select() does not modify timeout */
+     } else {
+         tvp = NULL;
+     }
+@@ -532,7 +534,10 @@ static inline abi_long do_freebsd_select(CPUArchState *env, int n,
+             }
+         }
+         if (target_tv_addr != 0) {
+-            error = h2t_freebsd_timeval(&tv, target_tv_addr);
++            /* FreeBSD select() does NOT modify the timeout on return
++             * (unlike Linux which decrements it). Write back the original
++             * value to preserve FreeBSD semantics. */
++            error = h2t_freebsd_timeval(&tv_orig, target_tv_addr);
+             if (is_error(error)) {
+                 return error;
+             }
+diff --git a/bsd-user/linux/qemu-os.h b/bsd-user/linux/qemu-os.h
+index f37ee0f693..1e95819673 100644
+--- a/bsd-user/linux/qemu-os.h
++++ b/bsd-user/linux/qemu-os.h
+@@ -34,6 +34,7 @@
+ #include <sys/socket.h>
+ #include <sys/termios.h>
+ #include <netinet/in.h>
++#include <pthread.h>
+ 
+ #undef ifr_name
+ #undef SIGRTMAX
+@@ -81,6 +82,11 @@ typedef struct fhandle  fhandle_t;
+         __asm__(".symver " #impl ", " #sym "@" #verid)
+ #define        nitems(x)       (sizeof((x)) / sizeof((x)[0]))
+ 
++#if defined(__linux__)
++int safe_dup(int oldfd);
++int safe_dup2(int oldfd, int newfd);
++#endif
++
+ #define PAGE_SHIFT 12
+ #define PAGE_SIZE  (1<<PAGE_SHIFT)
+ #define PAGE_MASK  (PAGE_SIZE-1)
+diff --git a/bsd-user/meson.build b/bsd-user/meson.build
+index 84ddbc3025..e457e7aeee 100644
+--- a/bsd-user/meson.build
++++ b/bsd-user/meson.build
+@@ -31,7 +31,8 @@ else
+   # Add libkqueue dependency
+   libkqueue = not_found
+   libkqueue = dependency('libkqueue', method: 'pkg-config', static: true)
+-  bsd_user_ss.add(elf, libkqueue)
++  libbsd = cc.find_library('bsd', required: true)
++  bsd_user_ss.add(elf, libkqueue, libbsd)
+ endif
+ 
+ # Pull in the OS-specific build glue, if any
+-- 
+2.39.5
+
