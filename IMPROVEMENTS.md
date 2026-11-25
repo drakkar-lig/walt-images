@@ -467,6 +467,29 @@ All commands should return a non-zero exit code on failure.
   some replies gives 0); not for `walt image shell` (the user may want to
   save the image even if the last command failed). Note: a remote shell killed
   by a signal gives 255 (ssh's convention).
+- **Done** on 2026-11-25 (branch `v11-fixes`, tag `future-v11` moved to
+  `2f222621`, `etienne-dev` rebased on it; not pushed yet):
+  - `e6568004`: python API, `node_set.acquire()` and `node_set.release()`
+    were broken; doc method lists updated.
+  - `c4e65cbe`: `dev/test.sh` no longer uses or removes `$TMPDIR`.
+  - `9d33c1ba`: `walt node config` / `walt device config` exit 1 on failure.
+  - `4e9200e9`: python API raises
+    `walt.client.exceptions.OperationFailedException` when an operation
+    fails (boot, reboot, wait, config get/set, create_vnode, get_nodes,
+    remove, rename, image build/clone, get_logs), instead of printing an
+    error and returning normally; new "Error handling" section in
+    `scripting.md`; tests in `test/py-api-*.py`.
+  - `e930c4a6`: server subprocesses no longer inherit NOTIFY_SOCKET (see
+    section 17).
+  - `8e73d9dc`: yes/no questions answer "no" when stdin is closed.
+  - `2f222621`: more commands exit 1 on failure: `walt node create /
+    remove / rename / cp ... booted-image`, `walt device rename / forget /
+    rescan / port-config`, `walt log add-checkpoint / remove-checkpoint`,
+    `walt advanced fix-image-owner`; tests added in `test/walt-*.sh`.
+  Tests: py-api-nodes/images/logs (46/46), walt-node.sh (20/20) and
+  walt-log.sh pass; the new cases of walt-device.sh and walt-advanced.sh
+  were checked by hand (these suites rename a device, rescan the network
+  and update default images).
 
 ## 15. walt server: clone failure analysis
 
