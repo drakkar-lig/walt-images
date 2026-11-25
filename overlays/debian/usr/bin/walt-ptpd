@@ -1,0 +1,24 @@
+#!/bin/sh
+# Start ptpd (in the foreground, for systemd) on the network interface
+# of the WalT network, since the WalT server is the PTP master.
+# This interface depends on the network interface naming policy (e.g.,
+# ens3 on pc-x86-64 nodes) and on the board (e.g., eth1 on nanopi-r5c),
+# so we select the one used to reach the WalT server. If it cannot be
+# found, we fail, rather than running ptpd on another interface.
+
+fail() {
+    echo "walt-ptpd: $*" >&2
+    exit 1
+}
+
+walt_server_ip="$(. /bin/walt-env 2>/dev/null; echo "$walt_server_ip")"
+[ -n "$walt_server_ip" ] || \
+    fail "could not read the IP of the WalT server in /bin/walt-env."
+
+iface="$(ip route get "$walt_server_ip" | \
+         sed -n 's/.* dev \([^ ]*\).*/\1/p')"
+[ -n "$iface" ] || \
+    fail "could not find the network interface used to reach the WalT" \
+         "server ($walt_server_ip)."
+
+exec /usr/sbin/ptpd --foreground -c /etc/ptpd.conf -i "$iface"

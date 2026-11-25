@@ -1,0 +1,19 @@
+[Unit]
+Description=PTP client of the WalT server
+# This unit replaces the one systemd generates from /etc/init.d/ptpd.
+# This should not run in "walt image shell"
+ConditionVirtualization=!container
+# PTP does not work well over the VPN of RPi5 VPN nodes
+# (these nodes have a walt-vpn network interface)
+ConditionPathExists=!/sys/class/net/walt-vpn
+After=network.target
+
+[Service]
+Type=simple
+# walt-ptpd runs ptpd on the network interface of the WalT network
+ExecStart=/usr/bin/walt-ptpd
+# do not delay the shutdown of the node
+TimeoutStopSec=5
+
+[Install]
+WantedBy=multi-user.target

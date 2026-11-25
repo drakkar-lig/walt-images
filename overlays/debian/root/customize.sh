@@ -105,8 +105,7 @@ case "$image_kind" in
         ;;
 esac
 
-# those files should be temporarily diverted for the package installation to pass
-mv /etc/default/ptpd /etc/default/ptpd.new
+# this file should be temporarily diverted for the package installation to pass
 [ -e "/etc/default/lldpd" ] && mv /etc/default/lldpd /etc/default/lldpd.new
 
 # Install packages
@@ -120,8 +119,7 @@ then
     rm /etc/apt/trusted.gpg.d/raspberrypi-archive-bootstrap.asc
 fi
 
-# restore diverted files
-mv /etc/default/ptpd.new /etc/default/ptpd
+# restore diverted file
 [ -e "/etc/default/lldpd.new" ] && mv /etc/default/lldpd.new /etc/default/lldpd
 
 # do this early (but we need wget) because it sometimes fails
@@ -188,6 +186,7 @@ fi
 # Enable our custom systemd units
 systemctl enable uptime-ready       # save uptime in /run when ready
 systemctl enable walt-lldp-monitor  # notify LLDP neighbors to server
+systemctl enable ptpd               # PTP client (see walt-ptpd)
 if [ "$image_kind" = "rpi32" -o "$image_kind" = "rpi64" ]
 then
     systemctl enable boot-firmware.mount           # RPi OS requirement
